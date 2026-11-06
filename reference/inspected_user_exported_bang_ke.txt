@@ -1,0 +1,26 @@
+Sheet title: PO17-2910B
+Max row: 17, Max col: 10
+Merged ranges:
+  I1:J1
+  I2:J2
+  A5:J5
+  A14:H14
+  B17:C17
+  E17:G17
+  I17:J17
+
+All rows:
+Row  1: I1='CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'
+Row  2: I2='ĐỘC LẬP - TỰ DO - HẠNH PHÚC'
+Row  4: A4='PO-2026-00001' | J4='Tp.HCM, Ngày 6 tháng 11 năm 2026'
+Row  5: A5='BẢNG KÊ YÊU CẦU MUA SẮM HÀNG HÓA, DỊCH VỤ'
+Row  6: I6='ĐVT: đồng'
+Row  7: A7='STT' | B7='Ngày đề xuất' | C7='Tên đơn vị' | D7='Nhà cung cấp' | E7='Nội dung' | F7='SL' | G7='Quy cách' | H7='Đơn giá\nchưa VAT' | I7='Thành tiền\nchưa VAT' | J7='Mục đích sử dụng'
+Row  8: A8='A. HỘI SỞ THANH TOÁN'
+Row  9: A9=1 | B9='15/10/2026' | C9='Chi Nhánh Hà Nội ' | D9='FTI' | E9='MAY IN LASER MAY IN BROTHER HL - L6210DW' | F9=1 | G9='CAI' | H9=10315000 | I9=10315000 | J9='Trang bị thay thế MAY IN HP LASER JET PRO M402DN không đáp ứng được công việc hư hỏng\nMTS:801FN02181030041; NHT:13/04/2018\nGTCL:0Đ\nMSP:801BNPT20260425113035\nTài sản hư hỏng thanh lý\n'
+Row 10: A10=2 | B10='21/10/2026' | C10='Chi nhánh Thanh Hóa' | D10='CTY FTI' | E10='CPU CPU U3: MÁY TÍNH ĐỂ BÀN (PC) LENOVO ThinkCentre neo 50s Gen 6 U3- 205/16GD5/512GSSD/KB/M/NoOS/3Y/ĐEN' | F10=1 | G10='CAI' | H10=26811000 | I10=26811000 | J10='Trang bị cho Onebank Bình Minh'
+Row 11: A11=3 | B11='21/10/2026' | C11='Chi nhánh Thanh Hóa' | D11='CTY FTI' | E11='MAN HINH MAY VI TINH MÀN HÌNH VI TÍNH (LCD) Lenovo L24i-4A 23.8INCH/1920x1080/100Hz/IPS/HDMI/VGA/HD MI Cable/3Y/XÁM' | F11=1 | G11='CAI' | H11=2560000 | I11=2560000 | J11='Trang bị cho Onebank Bình Minh'
+Row 12: A12='B. ĐƠN VỊ THANH TOÁN'
+Row 14: A14='TỔNG CỘNG CHƯA BAO GỒM VAT:' | I14=39686000
+Row 16: A16='Ghi chú: Thuế VAT theo quy định tại thời điểm.'
+Row 17: B17=' PHÒNG HCQT' | E17='CVCC QTTS' | I17='LẬP BẢNG'

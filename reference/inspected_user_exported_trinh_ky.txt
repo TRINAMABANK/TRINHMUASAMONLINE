@@ -1,0 +1,17 @@
+Sheet title: PYC
+Max row: 20, Max col: 8
+Merged ranges:
+
+All rows:
+Row  1: A1='NAM A BANK' | F1='CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'
+Row  2: A2='NAM A BANK - HỘI SỞ' | F2='Độc lập – Tự do – Hạnh phúc'
+Row  3: A3='201-203 Cách Mạng Tháng Tám, P. Bàn Cờ, TP. HCM'
+Row  4: A4='[T] 08 3929 6699 - [F] 08 3929 6688'
+Row  5: A5='[Hotline] 1900 6679 - [W] www.namabank.com.vn' | F5='Tp. Hồ Chí Minh, ngày 29/10/2026'
+Row  7: C7='PHIẾU YÊU CẦU MUA HÀNG HÓA, DỊCH VỤ'
+Row  9: A9='STT' | B9='Tên hàng hóa, dịch vụ' | C9='Quy cách' | D9='Đơn giá' | E9='SL' | F9='Thành tiền (chưa gồm VAT )' | G9='Ghi chú/NCC' | H9='Mục đích sử dụng'
+Row 10: A10=1 | B10='Các tài sản cố định/Công cụ lao động cho Đơn vị kinh doanh Khu vực Đông HCM, Tây HMC & KV. Miền Bắc (Đính kèm bảng kê Số: PO1-2910PYCMSHHDV-P.HCQT ngày 29/10/2026)' | C10='-' | D10='-' | E10='-' | F10=91159000 | G10='-' | H10='Trang bị TSCĐ/CCLĐ cho Đơn vị kinh doanh khu vực Miền Bắc sử dụng, phục vụ công việc.'
+Row 12: A12='NGƯỜI LẬP PHIẾU' | F12='BP. MUA HÀNG/TRƯỞNG ĐƠN VỊ'
+Row 16: D16='TỔNG GIÁM ĐỐC'
+Row 19: A19='Đơn giá (*): Đơn giá này do BPMH đề xuất. Đơn giá chưa bao gồm thuế GTGT. Thuế GTGT theo quy định hiện hành.'
+Row 20: A20='Mã: BM-HCQT.MSQLTS.01.01' | F20='Ngày hiệu lực (04/09/2024)'
