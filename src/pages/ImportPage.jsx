@@ -67,7 +67,7 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
         selectedRows
       });
 
-      alert(`Đã tạo thành công hồ sơ ${poNumber} từ ${selectedCount} dòng đã chọn! Trình duyệt đang tải về 2 file Excel.`);
+      alert(`Đã tạo thành công hồ sơ ${poNumber} từ ${selectedCount} dòng đã chọn! Trình duyệt đang tải về 01 file Excel gồm 02 Sheet (PHIẾU TRÌNH và BẢNG KÊ).`);
       
       // Chuyển sang màn hình quản lý hồ sơ
       onNavigate('pos');
@@ -95,9 +95,9 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
     <div className="page-container import-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Quy trình Nhập Phiếu Thô & Xuất Bảng Trình Ký</h1>
+          <h1 className="page-title">Quy trình Nhập Phiếu Thô & Xuất Hồ Sơ Mua Sắm</h1>
           <p className="page-subtitle">
-            Upload file Excel &rarr; Đọc tự động &rarr; Chỉnh sửa trực tiếp &rarr; Tick chọn &rarr; Xuất 2 file Excel
+            Upload file Excel &rarr; Đọc tự động &rarr; Chỉnh sửa trực tiếp &rarr; Tick chọn &rarr; Xuất duy nhất 01 file Excel (02 Sheet: Phiếu trình + Bảng kê)
           </p>
         </div>
       </div>

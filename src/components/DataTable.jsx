@@ -13,7 +13,9 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  Landmark,
+  Building2
 } from 'lucide-react';
 
 export function DataTable({
@@ -30,6 +32,7 @@ export function DataTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
   const [unitFilter, setUnitFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState(''); // '' | 'A' | 'B'
 
   // Sắp xếp (sorting)
   const [sortField, setSortField] = useState(null);
@@ -71,9 +74,15 @@ export function DataTable({
         return false;
       }
 
+      // Lọc Nhóm TT
+      if (groupFilter) {
+        const itemGroup = r.payGroup === 'B' ? 'B' : 'A';
+        if (itemGroup !== groupFilter) return false;
+      }
+
       return true;
     });
-  }, [rows, searchTerm, supplierFilter, unitFilter]);
+  }, [rows, searchTerm, supplierFilter, unitFilter, groupFilter]);
 
   // Sắp xếp
   const sortedRows = useMemo(() => {
@@ -118,10 +127,19 @@ export function DataTable({
     }
   };
 
+  // Thống kê các dòng được chọn
   const selectedRows = rows.filter(r => r.selected !== false);
   const selectedCount = selectedRows.length;
   const totalSelectedAmount = selectedRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   const totalSelectedQty = selectedRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+
+  // Thống kê chi tiết theo từng nhóm A và B
+  const itemsA = selectedRows.filter(r => (r.payGroup || 'A') === 'A');
+  const itemsB = selectedRows.filter(r => r.payGroup === 'B');
+  const countA = itemsA.length;
+  const amountA = itemsA.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const countB = itemsB.length;
+  const amountB = itemsB.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   const isAllPageSelected = paginatedRows.length > 0 && paginatedRows.every(r => r.selected !== false);
 
@@ -160,6 +178,22 @@ export function DataTable({
             <Filter size={14} className="filter-icon" />
             <select
               className="filter-select"
+              value={groupFilter}
+              onChange={(e) => {
+                setGroupFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">Tất cả Nhóm thanh toán (Cả 2 nhóm)</option>
+              <option value="A">Nhóm A: Hội sở thanh toán</option>
+              <option value="B">Nhóm B: Đơn vị thanh toán</option>
+            </select>
+          </div>
+
+          <div className="filter-select-wrapper">
+            <Filter size={14} className="filter-icon" />
+            <select
+              className="filter-select"
               value={supplierFilter}
               onChange={(e) => {
                 setSupplierFilter(e.target.value);
@@ -192,12 +226,16 @@ export function DataTable({
         </div>
       </div>
 
-      {/* Thanh chọn dòng và thống kê tiền */}
+      {/* Thanh chọn dòng và thống kê tiền 2 nhóm */}
       <RowSelection
         selectedCount={selectedCount}
         totalCount={rows.length}
         totalAmount={totalSelectedAmount}
         totalQty={totalSelectedQty}
+        countA={countA}
+        amountA={amountA}
+        countB={countB}
+        amountB={amountB}
         onSelectAll={onSelectAll}
         onDeselectAll={onDeselectAll}
       />
@@ -223,6 +261,9 @@ export function DataTable({
               </th>
               <th className="th-stt" onClick={() => handleSort('stt')}>
                 STT {sortField === 'stt' ? (sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} />}
+              </th>
+              <th className="th-group">
+                Nhóm TT
               </th>
               <th className="th-date" onClick={() => handleSort('date')}>
                 Ngày {sortField === 'date' ? (sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} />}
@@ -253,13 +294,14 @@ export function DataTable({
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="empty-table-cell">
+                <td colSpan={13} className="empty-table-cell">
                   Không tìm thấy dòng dữ liệu nào phù hợp với bộ lọc.
                 </td>
               </tr>
             ) : (
-              paginatedRows.map((row, idx) => {
+              paginatedRows.map((row) => {
                 const isSelected = row.selected !== false;
+                const isGroupA = (row.payGroup || 'A') === 'A';
                 return (
                   <tr key={row.id} className={isSelected ? 'row-selected' : 'row-deselected'}>
                     <td className="cell-checkbox">
@@ -270,6 +312,20 @@ export function DataTable({
                       />
                     </td>
                     <td className="cell-stt">{row.stt}</td>
+                    
+                    {/* Cột chọn Nhóm thanh toán (Hội sở / Đơn vị) */}
+                    <td className="cell-group">
+                      <select
+                        className={`badge-select ${isGroupA ? 'badge-ho' : 'badge-dv'}`}
+                        value={isGroupA ? 'A' : 'B'}
+                        onChange={(e) => onUpdateCell(row.id, 'payGroup', e.target.value)}
+                        title="Chọn nhóm thanh toán: A. Hội sở TT hoặc B. Đơn vị TT"
+                      >
+                        <option value="A">A. Hội sở TT</option>
+                        <option value="B">B. Đơn vị TT</option>
+                      </select>
+                    </td>
+
                     <td className="cell-date">
                       <EditableCell
                         value={row.date}

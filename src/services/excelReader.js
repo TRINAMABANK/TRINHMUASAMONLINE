@@ -104,12 +104,15 @@ export const excelReader = {
 
       const rawDate = getVal('date');
       const formattedDate = formatExcelDate(rawDate);
+      const rawUnit = String(getVal('unit') || '').trim();
+      const normUnit = rawUnit.toLowerCase();
+      const isHO = normUnit.includes('hội sở') || normUnit.includes('hoi so') || normUnit.includes('khối') || normUnit.includes('ban') || normUnit.includes('trung tâm');
 
       return {
         id: `row_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
         stt: idx + 1,
         date: formattedDate,
-        unit: String(getVal('unit') || '').trim(),
+        unit: rawUnit,
         supplier: String(getVal('supplier') || '').trim(),
         item: rawItem,
         qty: rawQty,
@@ -118,6 +121,7 @@ export const excelReader = {
         amount: rawAmount,
         purpose: rawPurpose,
         msp: msp,
+        payGroup: isHO ? 'A' : 'B', // A: Hội sở thanh toán, B: Đơn vị thanh toán
         statusDV: String(getVal('statusDV') || '').trim(),
         statusHO: String(getVal('statusHO') || '').trim(),
         selected: true, // Mặc định được tick chọn

@@ -83,6 +83,7 @@ export function useExcelImport() {
         amount: 0,
         purpose: '',
         msp: '',
+        payGroup: 'A',
         selected: true,
         ...defaultValues
       };

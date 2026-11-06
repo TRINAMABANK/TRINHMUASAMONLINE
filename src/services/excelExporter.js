@@ -1,6 +1,5 @@
 import ExcelJS from 'exceljs';
 import { TEMPLATE_CONFIG } from './templateMapper.js';
-import { formatCurrency, formatNumber } from '../utils/currencyUtils.js';
 
 /**
  * Tải file mẫu dưới dạng ArrayBuffer
@@ -24,7 +23,7 @@ async function loadTemplateBuffer(templatePath, overrideBuffer = null) {
 }
 
 /**
- * Tải file về máy người dùng trong browser
+ * Kích hoạt tải về duy nhất 01 file Excel trên trình duyệt
  * @param {ArrayBuffer|Blob} buffer 
  * @param {string} filename 
  */
@@ -43,273 +42,475 @@ export function triggerFileDownload(buffer, filename) {
 }
 
 /**
- * Service xuất 2 file Excel theo đúng 2 mẫu có sẵn:
- * 1. BẢNG TRÌNH KÝ (1_BANG_TRINH_KY.xlsx)
- * 2. BẢNG KÊ (2_BANG_KE.xlsx)
+ * Phân loại các sản phẩm được chọn thành 2 nhóm:
+ * - Nhóm A: Hội sở thanh toán
+ * - Nhóm B: Đơn vị thanh toán
+ * @param {Array} items 
+ * @returns {{ itemsA: Array, itemsB: Array }}
+ */
+export function categorizePayGroups(items = []) {
+  const selected = items.filter(x => x.selected !== false);
+  const itemsA = [];
+  const itemsB = [];
+
+  selected.forEach(item => {
+    // Nếu có trường payGroup cụ thể
+    const pg = String(item.payGroup || '').trim().toUpperCase();
+    if (pg === 'A' || pg === 'HO' || pg === 'HOI SO') {
+      itemsA.push(item);
+    } else if (pg === 'B' || pg === 'DV' || pg === 'DON VI') {
+      itemsB.push(item);
+    } else {
+      // Tự động nhận diện theo tên đơn vị
+      const unit = String(item.unit || '').toLowerCase();
+      if (unit.includes('hội sở') || unit.includes('hoi so') || unit.includes('khối') || unit.includes('ban') || unit.includes('trung tâm')) {
+        itemsA.push(item);
+      } else {
+        itemsB.push(item);
+      }
+    }
+  });
+
+  return { itemsA, itemsB, allSelected: selected };
+}
+
+/**
+ * Service xuất duy nhất 01 FILE EXCEL gồm đúng 02 SHEET:
+ * SHEET 1: PHIẾU TRÌNH
+ * SHEET 2: BẢNG KÊ
  */
 export const excelExporter = {
   /**
-   * Tạo workbook BẢNG TRÌNH KÝ từ template 1
+   * Tạo DUY NHẤT 1 WORKBOOK chứa cả 2 SHEET: PHIẾU TRÌNH & BẢNG KÊ
    * @param {object} poData Dữ liệu hồ sơ PO
-   * @param {ArrayBuffer} [customTemplateBuffer]
+   * @param {ArrayBuffer} [customTplBuf1] Buffer template 1 (Bảng trình ký)
+   * @param {ArrayBuffer} [customTplBuf2] Buffer template 2 (Bảng kê)
    * @returns {Promise<ExcelJS.Workbook>}
    */
-  async generateBangTrinhKy(poData, customTemplateBuffer = null) {
-    const cfg = TEMPLATE_CONFIG.TRINH_KY;
-    const arrayBuffer = await loadTemplateBuffer('/templates/1_BANG_TRINH_KY.xlsx', customTemplateBuffer);
+  async generateSingleProcurementWorkbook(poData, customTplBuf1 = null, customTplBuf2 = null) {
+    let buf1 = customTplBuf1;
+    let buf2 = customTplBuf2;
+    if (customTplBuf1 && typeof customTplBuf1 === 'object' && !(customTplBuf1 instanceof ArrayBuffer) && !(customTplBuf1 instanceof Uint8Array)) {
+      buf1 = customTplBuf1.customTemplateBuffer1 || customTplBuf1.tplBuf1;
+      buf2 = customTplBuf1.customTemplateBuffer2 || customTplBuf1.tplBuf2;
+    }
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(arrayBuffer);
+    const tplBuf1 = await loadTemplateBuffer('/templates/1_BANG_TRINH_KY.xlsx', buf1);
+    const tplBuf2 = await loadTemplateBuffer('/templates/2_BANG_KE.xlsx', buf2);
 
-    const worksheet = workbook.worksheets[cfg.sheetIndex] || workbook.worksheets[0];
-    if (!worksheet) throw new Error('Không tìm thấy sheet Bảng trình ký trong file mẫu.');
+    // 1. Phân loại sản phẩm thành 2 nhóm: A. Hội sở thanh toán & B. Đơn vị thanh toán
+    const { itemsA, itemsB, allSelected } = categorizePayGroups(poData.items);
+    if (allSelected.length === 0) {
+      throw new Error('Hồ sơ không có dòng sản phẩm nào được chọn để xuất.');
+    }
 
-    // Tính toán ngày tháng
+    // Tính toán số liệu từng nhóm và tổng cộng
+    const totalQtyA = itemsA.reduce((s, x) => s + (Number(x.qty) || 0), 0);
+    const totalAmountA = itemsA.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    const totalQtyB = itemsB.reduce((s, x) => s + (Number(x.qty) || 0), 0);
+    const totalAmountB = itemsB.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+    const grandTotalQty = totalQtyA + totalQtyB;
+    const grandTotalAmount = totalAmountA + totalAmountB;
+
+    // Ngày tháng định dạng Việt Nam
     const dateObj = poData.date ? new Date(poData.date) : new Date();
     const day = isNaN(dateObj.getDate()) ? new Date().getDate() : dateObj.getDate();
     const month = isNaN(dateObj.getMonth()) ? new Date().getMonth() + 1 : dateObj.getMonth() + 1;
     const year = isNaN(dateObj.getFullYear()) ? new Date().getFullYear() : dateObj.getFullYear();
+    const dateTextVi = `Tp. Hồ Chí Minh, ngày ${day} tháng ${month} năm ${year}`;
 
-    // Điền ngày tháng vào ô F5 (nằm trong ô gộp F5:H5)
-    worksheet.getCell(cfg.cells.dateCell).value = `Tp. Hồ Chí Minh, ngày ${day} tháng ${month} năm ${year}`;
+    // =========================================================================
+    // SHEET 1: PHIẾU TRÌNH
+    // =========================================================================
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(tplBuf1);
 
-    // Tổng số lượng & tổng thành tiền
-    const items = (poData.items || []).filter(x => x.selected !== false);
-    const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-    const totalAmount = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const s1 = wb.worksheets[0];
+    s1.name = 'PHIẾU TRÌNH';
+    s1.getCell('F5').value = dateTextVi;
 
-    // Gom danh sách nhà cung cấp không trùng lặp
-    const suppliers = [...new Set(items.map(x => (x.supplier || '').trim()).filter(Boolean))].join(', ') || '-';
+    const suppliersA = [...new Set(itemsA.map(x => (x.supplier || '').trim()).filter(Boolean))].join(', ') || '-';
+    const suppliersB = [...new Set(itemsB.map(x => (x.supplier || '').trim()).filter(Boolean))].join(', ') || '-';
+    const purposesA = [...new Set(itemsA.map(x => (x.purpose || '').trim()).filter(Boolean))].join('; ') || 'Theo đề xuất của Hội sở phục vụ công việc';
+    const purposesB = [...new Set(itemsB.map(x => (x.purpose || '').trim()).filter(Boolean))].join('; ') || 'Theo đề xuất của Đơn vị kinh doanh phục vụ công việc';
 
-    // Gom mục đích sử dụng tóm tắt
-    const purposes = [...new Set(items.map(x => (x.purpose || '').trim()).filter(Boolean))].join('; ') 
-      || 'Theo đề xuất của đơn vị phục vụ hoạt động chuyên môn';
+    const hasBothGroups = itemsA.length > 0 && itemsB.length > 0;
 
-    const rIdx = cfg.cells.summaryRowIndex; // Row 11
-    worksheet.getCell(`${cfg.cells.colSTT}${rIdx}`).value = 1;
-    worksheet.getCell(`${cfg.cells.colItem}${rIdx}`).value = 
-      `Các tài sản cố định/Công cụ lao động theo bảng kê số: ${poData.po} (Đính kèm bảng kê chi tiết)`;
-    worksheet.getCell(`${cfg.cells.colSpec}${rIdx}`).value = '-';
-    worksheet.getCell(`${cfg.cells.colPrice}${rIdx}`).value = '-';
-    worksheet.getCell(`${cfg.cells.colQty}${rIdx}`).value = totalQty > 0 ? totalQty : '-';
-    
-    // Thành tiền chưa VAT
-    const cellAmount = worksheet.getCell(`${cfg.cells.colAmount}${rIdx}`);
-    cellAmount.value = totalAmount;
-    cellAmount.numFmt = '#,##0';
+    let deltaS1 = 0;
 
-    worksheet.getCell(`${cfg.cells.colSupplier}${rIdx}`).value = suppliers;
-    worksheet.getCell(`${cfg.cells.colPurpose}${rIdx}`).value = purposes;
+    if (hasBothGroups) {
+      // Điền nhóm A vào dòng 11
+      s1.getCell('A11').value = 1;
+      s1.getCell('B11').value = `Các tài sản cố định/Công cụ lao động theo bảng kê số: ${poData.po} - A. HỘI SỞ THANH TOÁN (Đính kèm bảng kê chi tiết)`;
+      s1.getCell('C11').value = '-';
+      s1.getCell('D11').value = '-';
+      s1.getCell('E11').value = totalQtyA > 0 ? totalQtyA : '-';
+      s1.getCell('F11').value = totalAmountA;
+      s1.getCell('F11').numFmt = '#,##0';
+      s1.getCell('G11').value = suppliersA;
+      s1.getCell('H11').value = purposesA;
+      s1.getRow(11).height = 55;
 
-    // Chiều cao dòng tóm tắt đảm bảo không bị cắt chữ
-    worksheet.getRow(rIdx).height = cfg.rowHeight;
+      // Chèn dòng 12 (Nhóm B) và dòng 13 (Tổng cộng)
+      s1.spliceRows(12, 0, Array(8).fill(null), Array(8).fill(null));
+      deltaS1 = 2;
 
-    return workbook;
-  },
+      // Dòng 12: Nhóm B
+      const row12 = s1.getRow(12);
+      const row11 = s1.getRow(11);
+      for (let c = 1; c <= 8; c++) {
+        const targetCell = row12.getCell(c);
+        const srcCell = row11.getCell(c);
+        if (srcCell.style) targetCell.style = JSON.parse(JSON.stringify(srcCell.style));
+      }
+      row12.getCell(1).value = 2;
+      row12.getCell(2).value = `Các tài sản cố định/Công cụ lao động theo bảng kê số: ${poData.po} - B. ĐƠN VỊ THANH TOÁN (Đính kèm bảng kê chi tiết)`;
+      row12.getCell(3).value = '-';
+      row12.getCell(4).value = '-';
+      row12.getCell(5).value = totalQtyB > 0 ? totalQtyB : '-';
+      row12.getCell(6).value = totalAmountB;
+      row12.getCell(6).numFmt = '#,##0';
+      row12.getCell(7).value = suppliersB;
+      row12.getCell(8).value = purposesB;
+      row12.height = 55;
 
-  /**
-   * Tạo workbook BẢNG KÊ từ template 2
-   * Xử lý chính xác từng dòng, điều chỉnh ô gộp và vùng chữ ký không bị vỡ hay dịch chuyển sai
-   * @param {object} poData 
-   * @param {ArrayBuffer} [customTemplateBuffer]
-   * @returns {Promise<ExcelJS.Workbook>}
-   */
-  async generateBangKe(poData, customTemplateBuffer = null) {
-    const cfg = TEMPLATE_CONFIG.BANG_KE;
-    const arrayBuffer = await loadTemplateBuffer('/templates/2_BANG_KE.xlsx', customTemplateBuffer);
+      // Dòng 13: Dòng Tổng cộng chưa VAT
+      const row13 = s1.getRow(13);
+      for (let c = 1; c <= 8; c++) {
+        const targetCell = row13.getCell(c);
+        const srcCell = row11.getCell(c);
+        if (srcCell.style) targetCell.style = JSON.parse(JSON.stringify(srcCell.style));
+      }
+      row13.getCell(1).value = 'TỔNG CỘNG CHƯA BAO GỒM VAT:';
+      row13.getCell(1).font = { name: 'Times New Roman', size: 11, bold: true };
+      row13.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      row13.getCell(6).value = grandTotalAmount;
+      row13.getCell(6).numFmt = '#,##0';
+      row13.getCell(6).font = { name: 'Times New Roman', size: 11, bold: true };
+      row13.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+      row13.getCell(7).value = '-';
+      row13.getCell(8).value = '-';
+      row13.height = 28;
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(arrayBuffer);
+    } else {
+      // Chỉ có 1 nhóm
+      const isOnlyA = itemsA.length > 0;
+      const targetItems = isOnlyA ? itemsA : itemsB;
+      const labelGroup = isOnlyA ? 'A. HỘI SỞ THANH TOÁN' : 'B. ĐƠN VỊ THANH TOÁN';
+      const sup = isOnlyA ? suppliersA : suppliersB;
+      const pur = isOnlyA ? purposesA : purposesB;
+      const tQty = isOnlyA ? totalQtyA : totalQtyB;
+      const tAmt = isOnlyA ? totalAmountA : totalAmountB;
 
-    const worksheet = workbook.worksheets[cfg.sheetIndex] || workbook.worksheets[0];
-    if (!worksheet) throw new Error('Không tìm thấy sheet Bảng kê trong file mẫu.');
+      s1.getCell('A11').value = 1;
+      s1.getCell('B11').value = `Các tài sản cố định/Công cụ lao động theo bảng kê số: ${poData.po} - ${labelGroup} (Đính kèm bảng kê chi tiết)`;
+      s1.getCell('C11').value = '-';
+      s1.getCell('D11').value = '-';
+      s1.getCell('E11').value = tQty > 0 ? tQty : '-';
+      s1.getCell('F11').value = tAmt;
+      s1.getCell('F11').numFmt = '#,##0';
+      s1.getCell('G11').value = sup;
+      s1.getCell('H11').value = pur;
+      s1.getRow(11).height = 55;
 
-    // 1. Điền thông tin tiêu đề: Mã PO (A4) và Ngày tháng (J4)
-    worksheet.getCell(cfg.cells.poCodeCell).value = poData.po;
+      // Chèn 1 dòng tổng cộng tại dòng 12
+      s1.spliceRows(12, 0, Array(8).fill(null));
+      deltaS1 = 1;
 
-    const dateObj = poData.date ? new Date(poData.date) : new Date();
-    const day = isNaN(dateObj.getDate()) ? new Date().getDate() : dateObj.getDate();
-    const month = isNaN(dateObj.getMonth()) ? new Date().getMonth() + 1 : dateObj.getMonth() + 1;
-    const year = isNaN(dateObj.getFullYear()) ? new Date().getFullYear() : dateObj.getFullYear();
-    worksheet.getCell(cfg.cells.dateCell).value = `Tp.HCM, Ngày ${day} tháng ${month} năm ${year}`;
-
-    // 2. Lấy danh sách sản phẩm được tick chọn
-    const items = (poData.items || []).filter(x => x.selected !== false);
-    const N = items.length;
-    if (N === 0) {
-      throw new Error('Hồ sơ không có dòng sản phẩm nào được chọn để xuất bảng kê.');
+      const row12 = s1.getRow(12);
+      const row11 = s1.getRow(11);
+      for (let c = 1; c <= 8; c++) {
+        const targetCell = row12.getCell(c);
+        const srcCell = row11.getCell(c);
+        if (srcCell.style) targetCell.style = JSON.parse(JSON.stringify(srcCell.style));
+      }
+      row12.getCell(1).value = 'TỔNG CỘNG CHƯA BAO GỒM VAT:';
+      row12.getCell(1).font = { name: 'Times New Roman', size: 11, bold: true };
+      row12.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      row12.getCell(6).value = grandTotalAmount;
+      row12.getCell(6).numFmt = '#,##0';
+      row12.getCell(6).font = { name: 'Times New Roman', size: 11, bold: true };
+      row12.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+      row12.getCell(7).value = '-';
+      row12.getCell(8).value = '-';
+      row12.height = 28;
     }
 
-    // 3. Xử lý nhóm A (Row 9 đến 14 trong template gốc, tổng cộng 6 dòng có sẵn)
-    const firstDataRow = cfg.groupA.firstDataRow; // 9
-    const origRowCount = cfg.groupA.templateRowCount; // 6
-    const delta = N - origRowCount; // Số dòng chênh lệch (dương nếu thêm, âm nếu bớt)
+    // Tái tạo các ô gộp của Sheet 1 một cách an toàn và chuẩn xác
+    const currentMerges1 = [...(s1.model.merges || [])];
+    currentMerges1.forEach(m => { try { s1.unMergeCells(m); } catch(e){} });
 
-    // Đọc và sao lưu danh sách merged cells hiện có trong worksheet
-    const originalMerges = [...(worksheet.model.merges || [])];
+    s1.mergeCells('F1:H1');
+    s1.mergeCells('F2:H2');
+    s1.mergeCells('F5:H5');
+    s1.mergeCells('A8:H8');
 
-    // Gỡ toàn bộ merged cells tạm thời để thao tác chèn/xóa dòng an toàn không xung đột
-    originalMerges.forEach(mergeRange => {
-      try {
-        worksheet.unMergeCells(mergeRange);
-      } catch (e) {
-        // bỏ qua nếu đã unmerge
-      }
+    // Merge ô A:E của dòng Tổng cộng
+    const totalRowS1 = 11 + deltaS1;
+    s1.mergeCells(`A${totalRowS1}:E${totalRowS1}`);
+
+    // Merge các ô của khu vực chữ ký
+    s1.mergeCells(`G${13 + deltaS1}:H${13 + deltaS1}`);
+    s1.mergeCells(`A${14 + deltaS1}:E${14 + deltaS1}`);
+    s1.mergeCells(`C${24 + deltaS1}:F${24 + deltaS1}`);
+
+    // =========================================================================
+    // SHEET 2: BẢNG KÊ (Kế thừa từ template 2, chia 2 phần A & B rõ ràng)
+    // =========================================================================
+    const wbBangKe = new ExcelJS.Workbook();
+    await wbBangKe.xlsx.load(tplBuf2);
+    const srcBangKe = wbBangKe.worksheets[0];
+
+    const s2 = wb.addWorksheet('BẢNG KÊ', {
+      views: srcBangKe.views || [{ showGridLines: true }],
+      pageSetup: srcBangKe.pageSetup || {}
     });
 
-    // Nếu N > origRowCount (cần thêm dòng): chèn delta dòng tại sau dòng dữ liệu mẫu cuối cùng của nhóm A
-    if (delta > 0) {
-      const insertAt = firstDataRow + origRowCount; // Row 15 (ngay trước B. ĐƠN VỊ THANH TOÁN)
-      // Chèn delta dòng trống
-      worksheet.spliceRows(insertAt, 0, ...Array.from({ length: delta }, () => Array(10).fill(null)));
-    } else if (delta < 0) {
-      // Nếu N < origRowCount (ít dòng hơn mẫu): xóa bớt (origRowCount - N) dòng thừa
-      const deleteCount = origRowCount - N;
-      const deleteAt = firstDataRow + N; // Xóa từ sau dòng dữ liệu cuối cùng của danh sách
-      worksheet.spliceRows(deleteAt, deleteCount);
+    // 1. Sao chép độ rộng 10 cột
+    srcBangKe.columns.forEach((col, idx) => {
+      if (col && col.width) s2.getColumn(idx + 1).width = col.width;
+    });
+
+    // 2. Sao chép dòng 1 đến 8 (Dòng tiêu đề và dòng nhóm A ban đầu)
+    for (let r = 1; r <= 8; r++) {
+      const srcRow = srcBangKe.getRow(r);
+      const targetRow = s2.getRow(r);
+      targetRow.height = srcRow.height;
+      srcRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const targetCell = targetRow.getCell(colNumber);
+        targetCell.value = cell.value;
+        if (cell.style) targetCell.style = JSON.parse(JSON.stringify(cell.style));
+      });
     }
 
-    // Hàm điều chỉnh số dòng cho các merged cell nằm sau nhóm dữ liệu A (từ dòng 15 trở đi)
-    const shiftRowNumber = (rowNum) => {
-      // Nếu dòng nằm trước hoặc trong vùng nhóm A (<= 14 khi chưa sửa), không đổi nếu trước điểm chèn/xóa
-      const cutoff = firstDataRow + (delta > 0 ? origRowCount : N);
-      if (rowNum >= cutoff) {
-        return rowNum + delta;
-      }
-      return rowNum;
-    };
+    // Cập nhật tiêu đề Sheet 2
+    s2.getCell('A4').value = poData.po;
+    s2.getCell('J4').value = `Tp.HCM, Ngày ${day} tháng ${month} năm ${year}`;
 
-    // Khôi phục lại các merged cells với tọa độ đã được điều chỉnh chuẩn xác
-    originalMerges.forEach(rangeStr => {
-      const match = rangeStr.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
-      if (!match) return;
+    // Lấy các dòng mẫu từ template 2 để kế thừa style
+    const sampleDataRow = srcBangKe.getRow(9);
+    const headerRowB = srcBangKe.getRow(15);
+    const totalRowSample = srcBangKe.getRow(17);
+    const noteRowSample = srcBangKe.getRow(19);
+    const sigRowSample = srcBangKe.getRow(20);
 
-      const colStart = match[1];
-      const rowStart = Number(match[2]);
-      const colEnd = match[3];
-      const rowEnd = Number(match[4]);
+    // Helper điền dữ liệu hàng hóa vào 1 dòng
+    const writeItemRow = (targetRowNumber, item, sttNumber) => {
+      const row = s2.getRow(targetRowNumber);
+      const qtyNum = Number(item.qty || 0);
+      const priceNum = Number(item.price || 0);
+      const amountNum = Number(item.amount || 0) || (qtyNum * priceNum);
 
-      const newRowStart = shiftRowNumber(rowStart);
-      const newRowEnd = shiftRowNumber(rowEnd);
-
-      try {
-        worksheet.mergeCells(`${colStart}${newRowStart}:${colEnd}${newRowEnd}`);
-      } catch (err) {
-        console.warn(`Không thể khôi phục merge ${colStart}${newRowStart}:${colEnd}${newRowEnd}:`, err);
-      }
-    });
-
-    // 4. Lấy dòng mẫu chuẩn (dòng 9) để sao chép format cho toàn bộ các dòng dữ liệu
-    const sampleRow = worksheet.getRow(firstDataRow);
-
-    // Điền dữ liệu N dòng sản phẩm
-    let totalCalculatedAmount = 0;
-
-    items.forEach((item, idx) => {
-      const currentRowNumber = firstDataRow + idx;
-      const targetRow = worksheet.getRow(currentRowNumber);
-
-      const qtyNum = Number(item.qty) || 0;
-      const priceNum = Number(item.price) || 0;
-      const amountNum = (Number(item.amount) || 0) || (qtyNum * priceNum);
-      totalCalculatedAmount += amountNum;
-
-      // Các giá trị 10 cột
-      const rowValues = [
-        idx + 1,                         // Col 1 (A): STT
-        item.date || '',                 // Col 2 (B): Ngày đề xuất
-        item.unit || '',                 // Col 3 (C): Tên đơn vị
-        item.supplier || '',             // Col 4 (D): Nhà cung cấp
-        item.item || '',                 // Col 5 (E): Nội dung
-        qtyNum,                          // Col 6 (F): SL
-        item.spec || '',                 // Col 7 (G): Quy cách
-        priceNum,                        // Col 8 (H): Đơn giá chưa VAT
-        amountNum,                       // Col 9 (I): Thành tiền chưa VAT
-        item.purpose || ''               // Col 10 (J): Mục đích sử dụng
+      const vals = [
+        sttNumber,
+        item.date || '',
+        item.unit || '',
+        item.supplier || '',
+        item.item || '',
+        qtyNum,
+        item.spec || '',
+        priceNum,
+        amountNum,
+        item.purpose || ''
       ];
 
       for (let c = 1; c <= 10; c++) {
-        const cell = targetRow.getCell(c);
-        const sampleCell = sampleRow.getCell(c);
-
-        cell.value = rowValues[c - 1];
-
-        // Kế thừa style (font, border, fill) từ mẫu
-        if (sampleCell.style) {
-          cell.style = JSON.parse(JSON.stringify(sampleCell.style));
-        }
-
-        // Căn chỉnh nội dung & tự động xuống dòng (wrapText)
-        cell.alignment = {
-          ...(cell.alignment || {}),
-          vertical: 'middle',
-          wrapText: true
-        };
-
-        // Căn lề và định dạng số chuyên nghiệp
-        if (c === 1 || c === 2 || c === 6 || c === 7) {
-          // STT, Ngày, SL, Quy cách căn giữa
-          cell.alignment.horizontal = 'center';
-        } else if (c === 8 || c === 9) {
-          // Đơn giá, Thành tiền căn phải
-          cell.alignment.horizontal = 'right';
-        } else {
-          // Văn bản căn trái
-          cell.alignment.horizontal = 'left';
-        }
-
-        // Định dạng số cho SL, Đơn giá, Thành tiền
-        if ([6, 8, 9].includes(c)) {
-          cell.numFmt = '#,##0';
-        }
+        const cell = row.getCell(c);
+        const src = sampleDataRow.getCell(c);
+        cell.value = vals[c - 1];
+        if (src.style) cell.style = JSON.parse(JSON.stringify(src.style));
+        cell.alignment = { ...(cell.alignment || {}), vertical: 'middle', wrapText: true };
+        if ([1, 2, 6, 7].includes(c)) cell.alignment.horizontal = 'center';
+        else if ([8, 9].includes(c)) cell.alignment.horizontal = 'right';
+        else cell.alignment.horizontal = 'left';
+        if ([6, 8, 9].includes(c)) cell.numFmt = '#,##0';
       }
-
-      // Đặt chiều cao dòng dữ liệu
-      targetRow.height = cfg.dataRowHeight;
-    });
-
-    // 5. Cập nhật dòng TỔNG CỘNG CHƯA BAO GỒM VAT
-    const finalTotalRowNumber = cfg.originalTotalRow + delta;
-    const totalRow = worksheet.getRow(finalTotalRowNumber);
-
-    // Ô A (nằm trong merged A:H)
-    totalRow.getCell(1).value = 'TỔNG CỘNG CHƯA BAO GỒM VAT:';
-
-    // Ô I: Thành tiền tổng cộng
-    const totalAmountCell = totalRow.getCell(9);
-    totalAmountCell.value = totalCalculatedAmount;
-    totalAmountCell.numFmt = '#,##0';
-    totalAmountCell.font = { ...(totalAmountCell.font || {}), bold: true, size: 10 };
-    totalAmountCell.alignment = {
-      ...(totalAmountCell.alignment || {}),
-      horizontal: 'right',
-      vertical: 'middle'
+      row.height = 32;
     };
 
-    return workbook;
+    let currRow = 9;
+
+    // 3. Ghi dữ liệu Phần A: Hội sở thanh toán
+    if (itemsA.length > 0) {
+      itemsA.forEach((item, idx) => {
+        writeItemRow(currRow, item, idx + 1);
+        currRow++;
+      });
+    } else {
+      const r = s2.getRow(currRow);
+      for (let c = 1; c <= 10; c++) {
+        const src = sampleDataRow.getCell(c);
+        if (src.style) r.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+      }
+      r.getCell(1).value = '-';
+      r.getCell(5).value = '(Không phát sinh thanh toán tại Hội sở)';
+      r.height = 24;
+      currRow++;
+    }
+
+    // Dòng Cộng (Hội sở thanh toán)
+    const subtotalRowAIdx = currRow;
+    const rowSubtotalA = s2.getRow(subtotalRowAIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = sampleDataRow.getCell(c);
+      if (src.style) rowSubtotalA.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowSubtotalA.getCell(1).value = 'Cộng (Hội sở thanh toán):';
+    rowSubtotalA.getCell(1).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowSubtotalA.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+    rowSubtotalA.getCell(9).value = totalAmountA;
+    rowSubtotalA.getCell(9).numFmt = '#,##0';
+    rowSubtotalA.getCell(9).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowSubtotalA.getCell(9).alignment = { horizontal: 'right', vertical: 'middle' };
+    rowSubtotalA.height = 26;
+    currRow++;
+
+    // 4. Ghi tiêu đề Phần B: Đơn vị thanh toán
+    const headerRowBIdx = currRow;
+    const rowHeaderB = s2.getRow(headerRowBIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = headerRowB.getCell(c);
+      if (src.style) rowHeaderB.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowHeaderB.getCell(1).value = 'B. ĐƠN VỊ THANH TOÁN';
+    rowHeaderB.getCell(1).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowHeaderB.height = 24;
+    currRow++;
+
+    // Ghi dữ liệu Phần B: Đơn vị thanh toán
+    if (itemsB.length > 0) {
+      itemsB.forEach((item, idx) => {
+        writeItemRow(currRow, item, idx + 1);
+        currRow++;
+      });
+    } else {
+      const r = s2.getRow(currRow);
+      for (let c = 1; c <= 10; c++) {
+        const src = sampleDataRow.getCell(c);
+        if (src.style) r.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+      }
+      r.getCell(1).value = '-';
+      r.getCell(5).value = '(Không phát sinh thanh toán tại Đơn vị)';
+      r.height = 24;
+      currRow++;
+    }
+
+    // Dòng Cộng (Đơn vị thanh toán)
+    const subtotalRowBIdx = currRow;
+    const rowSubtotalB = s2.getRow(subtotalRowBIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = sampleDataRow.getCell(c);
+      if (src.style) rowSubtotalB.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowSubtotalB.getCell(1).value = 'Cộng (Đơn vị thanh toán):';
+    rowSubtotalB.getCell(1).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowSubtotalB.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+    rowSubtotalB.getCell(9).value = totalAmountB;
+    rowSubtotalB.getCell(9).numFmt = '#,##0';
+    rowSubtotalB.getCell(9).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowSubtotalB.getCell(9).alignment = { horizontal: 'right', vertical: 'middle' };
+    rowSubtotalB.height = 26;
+    currRow++;
+
+    // 5. Dòng TỔNG CỘNG CHƯA BAO GỒM VAT
+    const grandTotalRowIdx = currRow;
+    const rowGrandTotal = s2.getRow(grandTotalRowIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = totalRowSample.getCell(c);
+      if (src.style) rowGrandTotal.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowGrandTotal.getCell(1).value = 'TỔNG CỘNG CHƯA BAO GỒM VAT:';
+    rowGrandTotal.getCell(1).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowGrandTotal.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+    rowGrandTotal.getCell(9).value = grandTotalAmount;
+    rowGrandTotal.getCell(9).numFmt = '#,##0';
+    rowGrandTotal.getCell(9).font = { name: 'Times New Roman', size: 10, bold: true };
+    rowGrandTotal.getCell(9).alignment = { horizontal: 'right', vertical: 'middle' };
+    rowGrandTotal.height = 28;
+    currRow++;
+
+    // 6. Dòng trống cách dòng
+    currRow++;
+
+    // 7. Dòng Ghi chú VAT
+    const noteRowIdx = currRow;
+    const rowNote = s2.getRow(noteRowIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = noteRowSample.getCell(c);
+      if (src.style) rowNote.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowNote.getCell(1).value = 'Ghi chú: Thuế VAT theo quy định tại thời điểm.';
+    rowNote.height = 22;
+    currRow++;
+
+    // 8. Dòng Chữ ký Lãnh đạo & Các phòng ban
+    const sigRowIdx = currRow;
+    const rowSig = s2.getRow(sigRowIdx);
+    for (let c = 1; c <= 10; c++) {
+      const src = sigRowSample.getCell(c);
+      if (src.style) rowSig.getCell(c).style = JSON.parse(JSON.stringify(src.style));
+    }
+    rowSig.getCell(2).value = ' PHÒNG HCQT';
+    rowSig.getCell(5).value = 'CVCC QTTS';
+    rowSig.getCell(9).value = 'LẬP BẢNG';
+    rowSig.height = 30;
+
+    // 9. Sao chép logo từ srcBangKe sang Sheet 2
+    const images2 = srcBangKe.getImages ? srcBangKe.getImages() : [];
+    for (const img of images2) {
+      const imgData = wbBangKe.getImage(img.imageId);
+      if (imgData && imgData.buffer) {
+        const newImgId = wb.addImage({ buffer: imgData.buffer, extension: imgData.extension || 'png' });
+        s2.addImage(newImgId, img.range);
+      }
+    }
+
+    // 10. Tái tạo các ô gộp của Sheet 2 chuẩn xác 100%
+    s2.mergeCells('I1:J1');
+    s2.mergeCells('I2:J2');
+    s2.mergeCells('A5:J5');
+    s2.mergeCells(`A${subtotalRowAIdx}:H${subtotalRowAIdx}`);
+    s2.mergeCells(`A${subtotalRowBIdx}:H${subtotalRowBIdx}`);
+    s2.mergeCells(`A${grandTotalRowIdx}:H${grandTotalRowIdx}`);
+
+    s2.mergeCells(`B${sigRowIdx}:C${sigRowIdx}`);
+    s2.mergeCells(`E${sigRowIdx}:G${sigRowIdx}`);
+    s2.mergeCells(`I${sigRowIdx}:J${sigRowIdx}`);
+
+    // =========================================================================
+    // 11. KIỂM THỬ XÁC MINH SỰ KHỚP NỐI GIỮA 2 SHEET
+    // =========================================================================
+    const s1GrandTotal = Number(s1.getCell(`F${totalRowS1}`).value) || 0;
+    const s2GrandTotal = Number(s2.getCell(`I${grandTotalRowIdx}`).value) || 0;
+    if (Math.abs(s1GrandTotal - s2GrandTotal) > 0.01) {
+      throw new Error(`Tổng tiền giữa Sheet 1 PHIẾU TRÌNH (${s1GrandTotal.toLocaleString('vi-VN')} đ) và Sheet 2 BẢNG KÊ (${s2GrandTotal.toLocaleString('vi-VN')} đ) không khớp nhau!`);
+    }
+
+    return wb;
   },
 
   /**
-   * Xuất cả 2 file Excel và tự động kích hoạt tải xuống trình duyệt
+   * Xuất DUY NHẤT 01 FILE EXCEL chứa cả 2 Sheet (PHIẾU TRÌNH & BẢNG KÊ)
+   * Tự động tải xuống trình duyệt
    * @param {object} poData 
    */
-  async exportBothExcelFiles(poData) {
-    const wb1 = await this.generateBangTrinhKy(poData);
-    const wb2 = await this.generateBangKe(poData);
-
-    const buf1 = await wb1.xlsx.writeBuffer();
-    const buf2 = await wb2.xlsx.writeBuffer();
+  async exportSingleExcelFile(poData) {
+    const wb = await this.generateSingleProcurementWorkbook(poData);
+    const buffer = await wb.xlsx.writeBuffer();
 
     const cleanPO = (poData.po || 'PO').replace(/[/\\?%*:|"<>]/g, '_');
-    
-    // Tải file 1: BẢNG TRÌNH KÝ
-    triggerFileDownload(buf1, `${cleanPO}_01_Bang_trinh_ky.xlsx`);
+    const fileName = `${cleanPO}_Ho_so_mua_sam.xlsx`;
 
-    // Tải file 2: BẢNG KÊ (delay 500ms để trình duyệt tải tuần tự không chặn popup)
-    setTimeout(() => {
-      triggerFileDownload(buf2, `${cleanPO}_02_Bang_ke.xlsx`);
-    }, 600);
+    triggerFileDownload(buffer, fileName);
 
-    return { success: true, po: poData.po };
+    return { success: true, fileName, po: poData.po };
+  },
+
+  /**
+   * Phương thức tương thích ngược
+   */
+  async exportBothExcelFiles(poData) {
+    return this.exportSingleExcelFile(poData);
   }
 };

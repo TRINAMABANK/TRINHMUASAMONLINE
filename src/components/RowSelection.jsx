@@ -1,12 +1,16 @@
 import React from 'react';
 import { formatCurrency } from '../utils/currencyUtils.js';
-import { CheckSquare, Square, CheckCheck, XSquare } from 'lucide-react';
+import { CheckCheck, XSquare, Building2, Landmark } from 'lucide-react';
 
 export function RowSelection({
   selectedCount,
   totalCount,
   totalAmount,
   totalQty,
+  countA = 0,
+  amountA = 0,
+  countB = 0,
+  amountB = 0,
   onSelectAll,
   onDeselectAll
 }) {
@@ -24,6 +28,18 @@ export function RowSelection({
         <span className="selection-metric text-highlight">
           Tổng chưa VAT: <b>{formatCurrency(totalAmount)}</b>
         </span>
+
+        {/* Phân bổ nhóm thanh toán */}
+        <div className="selection-groups-preview">
+          <span className="group-tag tag-ho" title="Nhóm A: Hội sở thanh toán">
+            <Landmark size={13} />
+            Hội sở: <b>{countA}</b> dòng ({formatCurrency(amountA)})
+          </span>
+          <span className="group-tag tag-dv" title="Nhóm B: Đơn vị thanh toán">
+            <Building2 size={13} />
+            Đơn vị: <b>{countB}</b> dòng ({formatCurrency(amountB)})
+          </span>
+        </div>
       </div>
 
       <div className="selection-actions">

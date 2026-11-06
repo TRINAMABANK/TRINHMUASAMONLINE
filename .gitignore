@@ -26,3 +26,4 @@ dist-ssr
 # Temporary files
 temp_profile/
 screenshots/edge_screenshot.png
+test_output/

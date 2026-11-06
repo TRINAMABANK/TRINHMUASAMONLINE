@@ -96,7 +96,7 @@ export function App() {
             onClick={() => setCurrentView('exports')}
           >
             <FileDown size={18} />
-            Xuất 2 Mẫu Excel
+            Xuất File Excel (02 Sheet)
           </button>
 
           <button
@@ -121,7 +121,7 @@ export function App() {
         <header className="app-topbar">
           <div className="topbar-left">
             <span className="system-tag">Nam A Bank · QTTS SSO 2.0</span>
-            <span className="text-muted text-xs">Mẫu: 1. Bảng Trình Ký (PYC) • 2. Bảng Kê (10 cột)</span>
+            <span className="text-muted text-xs">Mẫu chuẩn: 01 File Excel gồm 02 Sheet (1. Phiếu trình PYC • 2. Bảng kê 10 cột)</span>
           </div>
 
           <div className="topbar-right">

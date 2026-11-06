@@ -165,7 +165,7 @@ export function POManagement({
                             type="button"
                             className="btn-icon"
                             onClick={() => onExportPO(po.id)}
-                            title="Xuất lại 2 file Excel"
+                            title="Tải 01 file Excel (Gồm 02 Sheet)"
                             disabled={isExporting}
                           >
                             <FileDown size={15} />
@@ -404,7 +404,7 @@ export function POManagement({
                   disabled={isExporting}
                 >
                   <FileDown size={16} />
-                  Xuất lại 2 file Excel
+                  {isExporting ? 'Đang xuất...' : 'Tải 01 file Excel (02 Sheet)'}
                 </button>
               </div>
 

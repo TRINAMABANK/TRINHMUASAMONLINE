@@ -65,8 +65,8 @@ export function ExportPage({ pos = [], onExportPO, isExporting }) {
     <div className="page-container export-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Trung tâm Xuất File & Tài liệu Biểu mẫu</h1>
-          <p className="page-subtitle">Xuất bộ đôi file Excel: Bảng Trình Ký và Bảng Kê chuẩn mẫu QTTS</p>
+          <h1 className="page-title">Trung tâm Xuất File & Tài liệu Biểu mẫu (02 Sheet)</h1>
+          <p className="page-subtitle">Xuất duy nhất 01 file Excel gồm 02 sheet: Sheet 1 - PHIẾU TRÌNH & Sheet 2 - BẢNG KÊ chuẩn mẫu QTTS</p>
         </div>
       </div>
 
@@ -118,7 +118,7 @@ export function ExportPage({ pos = [], onExportPO, isExporting }) {
         <div className="card-header-flex">
           <div>
             <h2 className="card-title">Danh sách hồ sơ sẵn sàng xuất Excel ({pos.length} hồ sơ)</h2>
-            <p className="card-desc">Nhấn vào biểu tượng tải về để xuất cùng lúc cả 2 file Excel cho hồ sơ tương ứng</p>
+            <p className="card-desc">Nhấn vào nút để xuất duy nhất 01 file Excel gồm 02 sheet (Phiếu trình + Bảng kê) cho hồ sơ tương ứng</p>
           </div>
           <div className="flex-align gap-2">
             <button
@@ -156,7 +156,7 @@ export function ExportPage({ pos = [], onExportPO, isExporting }) {
                   <th>Số sản phẩm</th>
                   <th>Tổng giá trị chưa VAT</th>
                   <th>Trạng thái</th>
-                  <th>Tải xuống 2 File Excel</th>
+                  <th>Tải 01 File Excel (02 Sheet)</th>
                 </tr>
               </thead>
               <tbody>
@@ -178,10 +178,10 @@ export function ExportPage({ pos = [], onExportPO, isExporting }) {
                           className="btn-download-duo"
                           onClick={() => onExportPO(po.id)}
                           disabled={isExporting}
-                          title="Tải về 2 file: 1. Bảng trình ký & 2. Bảng kê"
+                          title="Tải về duy nhất 01 file: Sheet 1 - Phiếu trình & Sheet 2 - Bảng kê"
                         >
                           <Download size={15} />
-                          {isExporting ? 'Đang xuất...' : 'Xuất bộ 2 file Excel'}
+                          {isExporting ? 'Đang xuất...' : 'Tải 01 File Excel'}
                         </button>
                       </td>
                     </tr>
