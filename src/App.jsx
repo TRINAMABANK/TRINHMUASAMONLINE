@@ -50,11 +50,11 @@ export function App() {
         <div className="sidebar-header">
           <div className="sidebar-brand">
             <div className="brand-icon-box">
-              <Building size={24} />
+              <Building size={22} />
             </div>
             <div className="brand-text">
-              <h1>QTTS 2.0</h1>
-              <span>Quản Trị Mua Sắm</span>
+              <h1>NAM A BANK</h1>
+              <span>QTTS · Mua Sắm Online</span>
             </div>
           </div>
         </div>
@@ -120,14 +120,14 @@ export function App() {
         {/* Topbar trên cùng */}
         <header className="app-topbar">
           <div className="topbar-left">
-            <span className="system-tag">Hệ thống Trình Ký & Mua Sắm SSO 2.0</span>
+            <span className="system-tag">Nam A Bank · QTTS SSO 2.0</span>
             <span className="text-muted text-xs">Mẫu: 1. Bảng Trình Ký (PYC) • 2. Bảng Kê (10 cột)</span>
           </div>
 
           <div className="topbar-right">
             <div className="flex-align gap-2">
               <UserCheck size={16} className="text-muted" />
-              <span className="font-medium text-navy" style={{ fontSize: 13 }}>Cán bộ QTTS</span>
+              <span className="font-medium text-navy" style={{ fontSize: 13 }}>Cán bộ Nam A Bank</span>
             </div>
           </div>
         </header>

@@ -1,0 +1,65 @@
+/**
+ * NAM A BANK DESIGN SYSTEM THEME TOKENS
+ * Chuẩn hóa màu sắc & biến CSS tập trung cho WebApp Quản Trị Tài Sản & Mua Sắm (QTTS)
+ */
+
+:root {
+  /* Màu sắc nhận diện thương hiệu Nam A Bank */
+  --brand-primary: #0056A3;
+  --brand-primary-hover: #004782;
+  --brand-primary-active: #003766;
+  --brand-primary-light: #EBF3FC;
+  --brand-primary-subtle: #F0F6FD;
+
+  /* Màu vàng điểm nhấn thương hiệu Nam A Bank */
+  --brand-accent: #FFD200;
+  --brand-accent-hover: #F0C400;
+  --brand-accent-active: #D9B100;
+  --brand-accent-text: #1E293B; /* Đảm bảo độ tương phản cao trên nền vàng */
+
+  /* Màu nền & bề mặt ứng dụng */
+  --background: #F3F6FA;
+  --surface: #FFFFFF;
+  --surface-subtle: #F8FAFC;
+
+  /* Màu chữ phân cấp độ */
+  --text-primary: #263445;
+  --text-secondary: #64748B;
+  --text-light: #94A3B8;
+  --text-white: #FFFFFF;
+
+  /* Đường viền & ngăn cách chuẩn ngân hàng */
+  --border-color: #DCE4EE;
+  --border-subtle: #EDF2F7;
+  --border-focus: #0056A3;
+
+  /* Màu trạng thái nghiệp vụ chuẩn (không dùng màu vàng thương hiệu thay thế) */
+  --success: #15803D;
+  --success-bg: #DCFCE7;
+  --success-text: #14532D;
+
+  --warning: #D97706;
+  --warning-bg: #FEF3C7;
+  --warning-text: #78350F;
+
+  --danger: #DC2626;
+  --danger-bg: #FEE2E2;
+  --danger-text: #7F1D1D;
+
+  --info: #0284C7;
+  --info-bg: #E0F2FE;
+  --info-text: #075985;
+
+  /* Thiết kế phẳng, bóng đổ tối giản phong cách ngân hàng */
+  --shadow-sm: 0 1px 2px rgba(38, 52, 69, 0.05);
+  --shadow-md: 0 2px 6px rgba(38, 52, 69, 0.08);
+  --shadow-lg: 0 8px 16px rgba(38, 52, 69, 0.12);
+
+  /* Bo góc chuẩn mực */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
