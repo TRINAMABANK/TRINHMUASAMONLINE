@@ -2,6 +2,8 @@ import { PGlite } from '@electric-sql/pglite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +24,7 @@ export async function initDatabase() {
 
   // Tạo toàn bộ 22 bảng theo thiết kế chuẩn
   await createSchemaTables(dbInstance);
+  await ensureSystemRolesAndUsers(dbInstance);
 
   const res = await dbInstance.query('SELECT version();');
   console.log(`[PostgreSQL] Kết nối thành công! Phiên bản: ${res.rows[0].version}`);
@@ -492,4 +495,109 @@ async function createSchemaTables(db) {
   `;
 
   await db.exec(ddl);
+}
+
+/**
+ * Đảm bảo các vai trò và người dùng chuẩn tồn tại trong hệ thống với mật khẩu hash bcrypt
+ */
+async function ensureSystemRolesAndUsers(db) {
+  try {
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_hash TEXT;`);
+  } catch (e) {}
+
+  // 1. Đảm bảo các roles chuẩn tồn tại
+  const systemRoles = [
+    { code: 'ADMIN', name: 'Quản trị hệ thống', desc: 'Toàn quyền cấu hình và quản trị' },
+    { code: 'QTTS', name: 'Quản lý Tài sản / BP Mua sắm', desc: 'Tạo PO, phân bổ, quản lý hồ sơ và master PO' },
+    { code: 'APPROVER', name: 'Lãnh đạo Phê duyệt', desc: 'Phê duyệt hồ sơ trình ký và đề xuất mua sắm' },
+    { code: 'DON_VI', name: 'Đơn vị Nhận hàng', desc: 'Chi nhánh/PGD/OneBank tra cứu và xác nhận nhận hàng' },
+    { code: 'UNIT_USER', name: 'Cán bộ Đơn vị (CN/PGD)', desc: 'Chi nhánh/PGD/OneBank tra cứu và xác nhận nhận hàng' },
+    { code: 'SUPPLIER', name: 'Nhà cung cấp', desc: 'Xác nhận đơn hàng và báo cáo tiến độ giao hàng' },
+    { code: 'VIEWER', name: 'Người xem dữ liệu', desc: 'Xem thông tin tổng hợp (Chỉ xem)' }
+  ];
+
+  for (const r of systemRoles) {
+    const existing = await db.query(`SELECT id FROM roles WHERE code = $1`, [r.code]);
+    if (!existing.rows.length) {
+      await db.query(
+        `INSERT INTO roles (id, code, name, description) VALUES ($1, $2, $3, $4);`,
+        [crypto.randomUUID(), r.code, r.name, r.desc]
+      );
+    }
+  }
+
+  // 2. Chuẩn bị password hash chuẩn bcrypt (Không bao giờ lưu hay so sánh văn bản thuần)
+  const salt = bcrypt.genSaltSync(10);
+  const hashAdmin2026 = bcrypt.hashSync('Admin2026', salt);
+  const hashNamABank = bcrypt.hashSync('NamABank@2026', salt);
+
+  // 3. Cập nhật mật khẩu chuẩn cho Admin (password_hash = hashAdmin2026, secondary_hash = hashNamABank)
+  await db.query(
+    `UPDATE users 
+     SET password_hash = $1, secondary_hash = $2, is_active = TRUE
+     WHERE LOWER(email) = 'admin@namabank.com.vn' OR full_name LIKE '%Quản trị%'`,
+    [hashAdmin2026, hashNamABank]
+  );
+
+  // Lấy role IDs
+  const rolesRes = await db.query(`SELECT id, code FROM roles`);
+  const roleMap = {};
+  rolesRes.rows.forEach(r => { roleMap[r.code] = r.id; });
+
+  // Lấy departments & suppliers
+  const deptsRes = await db.query(`SELECT id, code FROM departments`);
+  const deptMap = {};
+  deptsRes.rows.forEach(d => { deptMap[d.code] = d.id; });
+
+  const suppsRes = await db.query(`SELECT id, code FROM suppliers`);
+  const suppMap = {};
+  suppsRes.rows.forEach(s => { suppMap[s.code] = s.id; });
+
+  // 4. Đảm bảo các tài khoản chuẩn tồn tại và gán đúng role
+  const requiredUsers = [
+    { email: 'admin@namabank.com.vn', name: 'Quản trị viên Hệ thống', role: 'ADMIN', pwdHash: hashAdmin2026, secHash: hashNamABank },
+    { email: 'qtts@namabank.com.vn', name: 'Chuyên viên Quản lý Tài sản', role: 'QTTS', pwdHash: hashNamABank, deptCode: 'HOI_SO' },
+    { email: 'approver@namabank.com.vn', name: 'Trưởng Ban Phê duyệt Mua sắm', role: 'APPROVER', pwdHash: hashNamABank, deptCode: 'HOI_SO' },
+    { email: 'cnhanoi@namabank.com.vn', name: 'Kế toán CN Hà Nội', role: 'DON_VI', pwdHash: hashNamABank, deptCode: 'CN_HANOI' },
+    { email: 'hanoi_unit@namabank.com.vn', name: 'Phạm Văn D - Cán bộ CN Hà Nội', role: 'UNIT_USER', pwdHash: hashNamABank, deptCode: 'CN_HANOI' },
+    { email: 'ncc_fti@supplier.com', name: 'Đại diện FTI Tech', role: 'SUPPLIER', pwdHash: hashNamABank, suppCode: 'FTI' },
+    { email: 'supplier_fti@namabank.com.vn', name: 'Đại diện Đối tác FTI Telecom', role: 'SUPPLIER', pwdHash: hashNamABank, suppCode: 'FTI' },
+    { email: 'viewer@namabank.com.vn', name: 'Người xem dữ liệu (VIEWER)', role: 'VIEWER', pwdHash: hashNamABank }
+  ];
+
+  for (const u of requiredUsers) {
+    const existing = await db.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1)`, [u.email]);
+    let userId;
+    const deptId = u.deptCode ? (deptMap[u.deptCode] || null) : null;
+    const suppId = u.suppCode ? (suppMap[u.suppCode] || null) : null;
+
+    if (existing.rows.length > 0) {
+      userId = existing.rows[0].id;
+      await db.query(
+        `UPDATE users SET password_hash = $1, is_active = TRUE, secondary_hash = $2 WHERE id = $3`,
+        [u.pwdHash, u.secHash || null, userId]
+      );
+    } else {
+      userId = crypto.randomUUID();
+      await db.query(
+        `INSERT INTO users (id, email, password_hash, secondary_hash, full_name, department_id, supplier_id, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
+        [userId, u.email, u.pwdHash, u.secHash || null, u.name, deptId, suppId]
+      );
+    }
+
+    const roleId = roleMap[u.role] || roleMap['VIEWER'];
+    if (roleId) {
+      const urExisting = await db.query(
+        `SELECT id FROM user_roles WHERE user_id = $1 AND role_id = $2`,
+        [userId, roleId]
+      );
+      if (!urExisting.rows.length) {
+        await db.query(
+          `INSERT INTO user_roles (id, user_id, role_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [crypto.randomUUID(), userId, roleId]
+        );
+      }
+    }
+  }
 }

@@ -27,6 +27,7 @@ export function UserRoleSelector({ currentUser, onSwitchRole, isLoading }) {
         return { label: 'Cán bộ HCQT', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', icon: ShieldCheck };
       case 'APPROVER':
         return { label: 'Lãnh đạo Phê duyệt', bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff', icon: UserCheck };
+      case 'DON_VI':
       case 'UNIT_USER':
         return { label: 'Cán bộ Đơn vị (CN/PGD)', bg: '#fffbeb', color: '#92400e', border: '#fde68a', icon: Building2 };
       case 'SUPPLIER':
@@ -193,7 +194,7 @@ export function UserRoleSelector({ currentUser, onSwitchRole, isLoading }) {
               textAlign: 'center'
             }}
           >
-            Mật khẩu dùng chung kiểm thử: <code style={{ fontWeight: 600, color: '#0056A3' }}>NamABank@2026</code>
+            Chuyển đổi góc nhìn phân quyền (RBAC) • <span style={{ fontWeight: 600, color: '#0056A3' }}>Không yêu cầu mật khẩu</span>
           </div>
         </div>
       )}

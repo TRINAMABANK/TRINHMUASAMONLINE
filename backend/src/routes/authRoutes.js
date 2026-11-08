@@ -1,10 +1,11 @@
 import express from 'express';
-import { login, refreshToken, logout, getMe, getUsers, getDepartments, getSuppliers } from '../controllers/authController.js';
+import { login, switchRoleHandler, refreshToken, logout, getMe, getUsers, getDepartments, getSuppliers } from '../controllers/authController.js';
 import { authenticate, authorizeRoles } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 router.post('/login', login);
+router.post('/switch-role', authenticate, switchRoleHandler);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.get('/me', authenticate, getMe);

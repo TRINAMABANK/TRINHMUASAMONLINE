@@ -9,6 +9,14 @@ export const authApi = {
     return res;
   },
 
+  async switchRole(role) {
+    const res = await apiClient.post('/auth/switch-role', { role });
+    if (res.data?.token) {
+      apiClient.setToken(res.data.token);
+    }
+    return res;
+  },
+
   async getMe() {
     return apiClient.get('/auth/me');
   },

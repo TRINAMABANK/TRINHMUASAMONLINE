@@ -28,7 +28,7 @@ export function useAuth() {
   const initAuth = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Thử lấy thông tin tài khoản hiện tại từ token đã lưu
+      // Thử lấy thông tin tài khoản hiện tại từ token đã lưu (giữ nguyên vai trò đã chuyển)
       const meRes = await authApi.getMe();
       if (meRes.success && meRes.data) {
         setCurrentUser(meRes.data);
@@ -38,12 +38,12 @@ export function useAuth() {
     } catch (e) {
       // Nếu chưa đăng nhập hoặc token hết hạn, tự động đăng nhập tài khoản ADMIN mặc định để trải nghiệm liền mạch
       try {
-        const loginRes = await authApi.login('admin@namabank.com.vn', 'NamABank@2026');
+        const loginRes = await authApi.login('Admin', 'Admin2026');
         if (loginRes.success && loginRes.data?.user) {
           setCurrentUser(loginRes.data.user);
         }
       } catch (err) {
-        console.warn('Lỗi đăng nhập ban đầu:', err);
+        console.warn('Lỗi đăng nhập ban đầu:', err.message);
       }
     } finally {
       setIsLoading(false);
@@ -54,16 +54,15 @@ export function useAuth() {
     initAuth();
   }, [initAuth]);
 
-  // Chuyển đổi nhanh vai trò người dùng (Rất tiện lợi khi kiểm thử phân quyền các Cổng)
+  // Chuyển đổi vai trò người dùng chuẩn qua API /api/auth/switch-role (Không yêu cầu mật khẩu)
   const switchRole = useCallback(async (targetRole) => {
-    const acc = DEMO_ACCOUNTS.find(a => a.role === targetRole) || DEMO_ACCOUNTS[0];
     setIsLoading(true);
     setError(null);
     try {
-      const loginRes = await authApi.login(acc.email, 'NamABank@2026');
-      if (loginRes.success && loginRes.data?.user) {
-        setCurrentUser(loginRes.data.user);
-        return loginRes.data.user;
+      const res = await authApi.switchRole(targetRole);
+      if (res.success && res.data?.user) {
+        setCurrentUser(res.data.user);
+        return res.data.user;
       }
     } catch (err) {
       setError(err.message);

@@ -51,8 +51,17 @@ export async function authenticate(req, res, next) {
       WHERE ur.user_id = $1
     `, [user.id]);
 
-    user.roles = roleRows.map(r => r.code);
-    user.role = user.roles[0] || 'VIEWER';
+    const baseRoles = roleRows.map(r => r.code);
+    user.roles = baseRoles;
+    user.originalRoles = baseRoles;
+
+    // Vai trò hiện hành (activeRole) được lấy từ JWT (nếu đã switch-role) hoặc mặc định là role gốc đầu tiên
+    const activeRole = decoded.activeRole || decoded.role || baseRoles[0] || 'VIEWER';
+    user.role = activeRole;
+    user.activeRole = activeRole;
+
+    if (decoded.department_id) user.department_id = decoded.department_id;
+    if (decoded.supplier_id) user.supplier_id = decoded.supplier_id;
 
     req.user = user;
     next();
@@ -72,19 +81,28 @@ export async function authenticate(req, res, next) {
 export function authorizeRoles(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Chưa đăng nhập.' });
+      return res.status(401).json({ success: false, message: 'Chưa đăng nhập. Vui lòng đăng nhập lại.' });
     }
 
-    // ADMIN luôn có toàn quyền
-    if (req.user.roles.includes('ADMIN') || req.user.role === 'ADMIN') {
+    const currentRole = req.user.activeRole || req.user.role;
+
+    // Nếu vai trò hiện hành là ADMIN: toàn quyền truy cập
+    if (currentRole === 'ADMIN') {
       return next();
     }
 
-    const hasPermission = req.user.roles.some(r => allowedRoles.includes(r));
+    // Chuẩn hóa tên vai trò tương đương (UNIT_USER tương đương DON_VI)
+    const normalizedAllowed = allowedRoles.flatMap(r => {
+      if (r === 'UNIT_USER') return ['UNIT_USER', 'DON_VI'];
+      if (r === 'DON_VI') return ['UNIT_USER', 'DON_VI'];
+      return [r];
+    });
+
+    const hasPermission = normalizedAllowed.includes(currentRole);
     if (!hasPermission) {
       return res.status(403).json({
         success: false,
-        message: `Bạn không có quyền thực hiện thao tác này. Quyền yêu cầu: [${allowedRoles.join(', ')}], quyền hiện tại: [${req.user.roles.join(', ')}].`
+        message: `Bạn không có quyền thực hiện thao tác này. Quyền yêu cầu: [${allowedRoles.join(', ')}], vai trò hiện tại: [${currentRole}].`
       });
     }
 
