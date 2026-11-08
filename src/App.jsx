@@ -12,6 +12,7 @@ import { LifecycleReportsPage } from './pages/LifecycleReportsPage.jsx';
 
 import { UserRoleSelector } from './components/UserRoleSelector.jsx';
 import { NotificationBell } from './components/NotificationBell.jsx';
+import { AdminLoginModal } from './components/AdminLoginModal.jsx';
 
 import { usePOManagement } from './hooks/usePOManagement.js';
 import { useAuth } from './hooks/useAuth.js';
@@ -48,9 +49,19 @@ export function App() {
     return { view: '', po: '', supplier: '' };
   }, []);
 
+  // Nhận diện đường dẫn /admin hoặc view=admin
+  const isAdminPath = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/admin') ||
+    window.location.search.includes('view=admin')
+  );
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(isAdminPath);
+
   const [currentView, setCurrentView] = useState(() => {
     if (initialUrlParams.view === 'supplier_portal' || initialUrlParams.supplier || (initialUrlParams.po && initialUrlParams.view !== 'pos')) {
       return 'supplier_portal';
+    }
+    if (isAdminPath) {
+      return 'dashboard';
     }
     return 'import'; // Mặc định vào quy trình nhập phiếu thô
   });
@@ -251,6 +262,29 @@ export function App() {
           </div>
 
           <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* Nút đăng nhập Quản trị Admin */}
+            <button
+              type="button"
+              onClick={() => setShowAdminLoginModal(true)}
+              style={{
+                background: '#003366',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+              title="Đăng nhập trang quản trị (Admin / Admin2026)"
+            >
+              🔐 Admin Portal
+            </button>
+
             {/* Chuông thông báo nghiệp vụ */}
             <NotificationBell currentUser={currentUser} onNavigateToPO={handleOpenPO} />
 
@@ -344,6 +378,16 @@ export function App() {
           )}
         </div>
       </main>
+
+      {/* Modal đăng nhập Quản trị dành cho https://quanlyts.com/admin */}
+      <AdminLoginModal
+        isOpen={showAdminLoginModal}
+        onClose={() => setShowAdminLoginModal(false)}
+        onSuccess={(user) => {
+          switchRole('ADMIN');
+          setCurrentView('dashboard');
+        }}
+      />
     </div>
   );
 }
