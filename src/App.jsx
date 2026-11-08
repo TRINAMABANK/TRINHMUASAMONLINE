@@ -179,6 +179,19 @@ export function App() {
     return <SupplierPortalPage token={supplierToken} />;
   }
 
+  // 1. Luôn luôn popup bảng đăng nhập trước khi vào phần mềm nếu chưa có tài khoản đăng nhập
+  if (!currentUser) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <AdminLoginModal
+          isOpen={true}
+          canClose={false}
+          onSuccess={handleLoginSuccess}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar bên trái */}
@@ -430,8 +443,9 @@ export function App() {
           {currentView === 'import' && (
             <ImportPage
               onCreatePO={createPO}
-              onNavigateToPO={handleOpenPO}
-              onRefreshPOs={refreshPOs}
+              isExporting={isExporting}
+              generateNextPO={generateNextPO}
+              onNavigate={setCurrentView}
             />
           )}
 
@@ -439,15 +453,14 @@ export function App() {
             <POManagement
               pos={pos}
               activePOId={activePOId}
-              setActivePOId={setActivePOId}
+              onSetActivePOId={setActivePOId}
               onUpdateStatus={updateStatus}
               onUpdateOrderInfo={updateOrderInfo}
               onExportPO={exportPO}
               onDeletePO={deletePO}
-              onSeedDemo={seedDemoData}
-              onNavigateToReceipt={handleNavigateToReceipt}
-              refreshPOs={refreshPOs}
+              isExporting={isExporting}
               currentUser={currentUser}
+              refreshPOs={refreshPOs}
             />
           )}
 
@@ -456,6 +469,7 @@ export function App() {
               pos={pos}
               currentUser={currentUser}
               onNavigateToReceipt={handleNavigateToReceipt}
+              onOpenPO={handleOpenPO}
             />
           )}
 
@@ -464,6 +478,8 @@ export function App() {
               pos={pos}
               currentUser={currentUser}
               onRefreshPOs={refreshPOs}
+              preselectedPONumber={initialUrlParams.po}
+              preselectedSupplierCode={initialUrlParams.supplier}
             />
           )}
 
@@ -471,17 +487,17 @@ export function App() {
             <ReceiptConfirmationPage
               pos={pos}
               preselectedPOId={receiptPreselectedPOId}
-              onUpdateOrderInfo={updateOrderInfo}
-              onRefreshPOs={refreshPOs}
               currentUser={currentUser}
+              onRefreshPOs={refreshPOs}
+              onNavigateToPO={handleOpenPO}
             />
           )}
 
           {currentView === 'deliveries' && (
             <DeliveryTrackingPage
               pos={pos}
-              onRefreshPOs={refreshPOs}
-              currentUser={currentUser}
+              onOpenPO={handleOpenPO}
+              onNavigateToReceipt={handleNavigateToReceipt}
             />
           )}
 
