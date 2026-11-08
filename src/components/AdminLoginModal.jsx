@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { authApi } from '../services/api/authApi.js';
-import { ShieldCheck, Lock, User, CheckCircle2, AlertCircle, X, Building } from 'lucide-react';
+import { ShieldCheck, Lock, User, AlertCircle, X, LogIn } from 'lucide-react';
 
-export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
-  const [username, setUsername] = useState('Admin');
-  const [password, setPassword] = useState('Admin2026');
+export function AdminLoginModal({ isOpen, onClose, onSuccess, canClose = true }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -12,7 +12,7 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
+    if (!username.trim() || !password.trim()) {
       setErrorMessage('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.');
       return;
     }
@@ -21,14 +21,14 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
     setErrorMessage('');
 
     try {
-      const res = await authApi.login(username, password);
+      const res = await authApi.login(username.trim(), password.trim());
       if (res.success && res.data?.user) {
         if (onSuccess) {
           onSuccess(res.data.user);
         }
-        if (onClose) onClose();
+        if (canClose && onClose) onClose();
       } else {
-        setErrorMessage(res.message || 'Đăng nhập không thành công.');
+        setErrorMessage(res.message || 'Tài khoản hoặc mật khẩu không chính xác.');
       }
     } catch (err) {
       setErrorMessage(err.message || 'Lỗi kết nối máy chủ xác thực.');
@@ -37,22 +37,50 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
     }
   };
 
+  const handleOverlayClick = () => {
+    if (canClose && onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.75)' }}>
+    <div
+      className="modal-overlay"
+      onClick={handleOverlayClick}
+      style={{
+        zIndex: 2000,
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(4px)',
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
+      }}
+    >
       <div
         className="modal-dialog"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '440px', width: '92%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
+        style={{
+          maxWidth: '440px',
+          width: '100%',
+          borderRadius: '14px',
+          overflow: 'hidden',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+          background: '#ffffff',
+          animation: 'fadeIn 0.2s ease-out'
+        }}
       >
-        {/* Header */}
+        {/* Header khớp chuẩn thiết kế Nam A Bank */}
         <div style={{
           background: 'linear-gradient(135deg, #003366 0%, #001f3f 100%)',
           color: '#ffffff',
-          padding: '24px 24px 20px',
+          padding: '28px 24px 22px',
           position: 'relative',
           textAlign: 'center'
         }}>
-          {onClose && (
+          {canClose && onClose && (
             <button
               type="button"
               onClick={onClose}
@@ -71,30 +99,31 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
+              title="Đóng"
             >
               <X size={18} />
             </button>
           )}
 
           <div style={{
-            width: '56px',
-            height: '56px',
+            width: '60px',
+            height: '60px',
             borderRadius: '50%',
             background: '#FFD200',
             color: '#003366',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 12px',
-            boxShadow: '0 4px 14px rgba(255, 210, 0, 0.4)'
+            margin: '0 auto 14px',
+            boxShadow: '0 4px 16px rgba(255, 210, 0, 0.4)'
           }}>
-            <ShieldCheck size={32} />
+            <ShieldCheck size={34} />
           </div>
 
-          <h2 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 800, letterSpacing: '0.5px' }}>
-            CỔNG QUẢN TRỊ TRINHMUASAM
+          <h2 style={{ margin: '0 0 6px', fontSize: '19px', fontWeight: 800, letterSpacing: '0.5px' }}>
+            CỔNG ĐĂNG NHẬP HỆ THỐNG
           </h2>
-          <p style={{ margin: 0, fontSize: '12.5px', opacity: 0.85 }}>
+          <p style={{ margin: 0, fontSize: '13px', opacity: 0.88, color: '#e2e8f0' }}>
             Nam A Bank • Quản Trị Mua Sắm & Vòng Đời PO
           </p>
         </div>
@@ -105,72 +134,73 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
             <div style={{
               background: '#fef2f2',
               border: '1px solid #fecaca',
-              borderRadius: '6px',
-              padding: '10px 14px',
-              marginBottom: '16px',
+              borderRadius: '8px',
+              padding: '12px 14px',
+              marginBottom: '18px',
               color: '#991b1b',
-              fontSize: '12.5px',
+              fontSize: '13px',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}>
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-              Tài khoản Quản trị:
+          <div style={{ marginBottom: '18px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '7px' }}>
+              Tài khoản đăng nhập:
             </label>
             <div style={{ position: 'relative' }}>
-              <User size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
+              <User size={18} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Admin"
+                placeholder="Nhập tên đăng nhập hoặc email..."
                 required
+                autoFocus
                 style={{
                   width: '100%',
-                  padding: '10px 12px 10px 38px',
-                  borderRadius: '6px',
+                  padding: '11px 12px 11px 40px',
+                  borderRadius: '7px',
                   border: '1px solid #cbd5e1',
-                  fontSize: '13.5px',
-                  boxSizing: 'border-box'
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                  color: '#0f172a'
                 }}
               />
             </div>
-            <span style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', display: 'block' }}>
-              Nhập: <strong>Admin</strong> (hoặc admin@quanlyts.com)
-            </span>
           </div>
 
-          <div style={{ marginBottom: '22px' }}>
-            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '7px' }}>
               Mật khẩu:
             </label>
             <div style={{ position: 'relative' }}>
-              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
+              <Lock size={18} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Nhập mật khẩu..."
                 required
                 style={{
                   width: '100%',
-                  padding: '10px 12px 10px 38px',
-                  borderRadius: '6px',
+                  padding: '11px 12px 11px 40px',
+                  borderRadius: '7px',
                   border: '1px solid #cbd5e1',
-                  fontSize: '13.5px',
-                  boxSizing: 'border-box'
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                  color: '#0f172a'
                 }}
               />
             </div>
-            <span style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', display: 'block' }}>
-              Mật khẩu mặc định: <strong>Admin2026</strong>
-            </span>
           </div>
 
           <button
@@ -182,7 +212,7 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
               background: 'linear-gradient(135deg, #003366 0%, #0056A3 100%)',
               color: '#ffffff',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: '7px',
               fontSize: '14px',
               fontWeight: 700,
               cursor: 'pointer',
@@ -191,11 +221,11 @@ export function AdminLoginModal({ isOpen, onClose, onSuccess }) {
               justifyContent: 'center',
               gap: '8px',
               transition: 'all 0.2s',
-              boxShadow: '0 4px 12px rgba(0, 51, 102, 0.3)'
+              boxShadow: '0 4px 14px rgba(0, 51, 102, 0.35)'
             }}
           >
-            <ShieldCheck size={18} />
-            {isLoading ? 'ĐANG XÁC THỰC...' : 'ĐĂNG NHẬP QUẢN TRỊ'}
+            <LogIn size={18} />
+            {isLoading ? 'ĐANG XÁC THỰC...' : 'ĐĂNG NHẬP HỆ THỐNG'}
           </button>
         </form>
       </div>

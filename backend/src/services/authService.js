@@ -19,9 +19,9 @@ export async function loginUser(email, password) {
      LEFT JOIN suppliers s ON u.supplier_id = s.id
      WHERE LOWER(u.email) = LOWER($1) 
         OR ($2 = true AND (LOWER(u.email) IN ('admin@namabank.com.vn', 'admin@quanlyts.com') OR u.full_name LIKE '%Quản trị%'))
-        OR ($1 = 'hanoi_unit@namabank.com.vn' AND LOWER(u.email) = 'cnhanoi@namabank.com.vn')
-        OR ($1 = 'supplier_fti@namabank.com.vn' AND LOWER(u.email) = 'ncc_fti@supplier.com')
-        OR ($1 = 'hcqt@namabank.com.vn' AND LOWER(u.email) = 'qtts@namabank.com.vn')
+        OR LOWER(u.email) LIKE LOWER($1 || '@%')
+        OR ($1 = 'hanoi_unit' AND LOWER(u.email) = 'cnhanoi@namabank.com.vn')
+        OR ($1 = 'supplier' AND (LOWER(u.email) = 'ncc_fti@supplier.com' OR LOWER(u.email) = 'supplier_fti@namabank.com.vn'))
      LIMIT 1`,
     [normEmail, isSearchAdmin]
   );

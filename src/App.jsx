@@ -29,12 +29,14 @@ import {
   Truck,
   TrendingUp,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  LogOut,
+  Eye
 } from 'lucide-react';
 import './styles/main.css';
 
 export function App() {
-  const { currentUser, role, refreshUser, isLoading: authLoading } = useAuth();
+  const { currentUser, setCurrentUser, logout, refreshUser, isLoading: authLoading } = useAuth();
 
   // Đọc tham số URL khi đối tác truy cập bằng link riêng
   const initialUrlParams = useMemo(() => {
@@ -61,21 +63,22 @@ export function App() {
     return sp.get('token') || '';
   }, []);
 
-  // Nhận diện đường dẫn /admin hoặc view=admin
-  const isAdminPath = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/admin') ||
-    window.location.search.includes('view=admin')
-  );
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState(isAdminPath);
+  // Modal đăng nhập luôn luôn popup trước khi vào phần mềm nếu chưa có user
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !currentUser && !supplierToken) {
+      setShowLoginModal(true);
+    } else if (currentUser) {
+      setShowLoginModal(false);
+    }
+  }, [authLoading, currentUser, supplierToken]);
 
   const [currentView, setCurrentView] = useState(() => {
     if (initialUrlParams.view === 'supplier_portal' || initialUrlParams.supplier || (initialUrlParams.po && initialUrlParams.view !== 'pos')) {
       return 'supplier_portal';
     }
-    if (isAdminPath) {
-      return 'dashboard';
-    }
-    return 'import'; // Mặc định vào quy trình nhập phiếu thô
+    return 'dashboard';
   });
 
   const [receiptPreselectedPOId, setReceiptPreselectedPOId] = useState('');
@@ -95,14 +98,29 @@ export function App() {
     generateNextPO
   } = usePOManagement();
 
-  // Tự động chuyển view phù hợp khi đổi vai trò người dùng
-  useEffect(() => {
-    if (role === 'UNIT_USER' && (currentView === 'import' || currentView === 'supplier_portal')) {
+  // Tự động điều chuyển màn hình phù hợp với vai trò của user khi đăng nhập thành công
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setShowLoginModal(false);
+    const r = user?.role;
+    if (r === 'UNIT_USER' || r === 'DON_VI') {
       setCurrentView('unit_portal');
-    } else if (role === 'SUPPLIER' && (currentView === 'import' || currentView === 'unit_portal')) {
+    } else if (r === 'SUPPLIER') {
       setCurrentView('supplier_portal');
+    } else if (r === 'APPROVER') {
+      setCurrentView('pos');
+    } else if (r === 'VIEWER') {
+      setCurrentView('dashboard');
+    } else {
+      // ADMIN, QTTS, HCQT
+      setCurrentView('import');
     }
-  }, [role]);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setShowLoginModal(true);
+  };
 
   // Đếm số lượng hồ sơ cần phê duyệt
   const pendingCount = pos.filter(p => ['Chờ trình ký', 'Đã trình ký', 'CHO_DUYET', 'KHOI_TAO'].includes(p.status || p.submission_status)).length;
@@ -119,15 +137,42 @@ export function App() {
     setCurrentView('receipt');
   };
 
-  // Toàn bộ tính năng mở đầy đủ cho Quản trị viên (ADMIN)
-  const canAccessImport = true;
-  const canAccessPOs = true;
-  const canAccessUnitPortal = true;
-  const canAccessSupplierPortal = true;
-  const canAccessReceipt = true;
-  const canAccessDeliveries = true;
-  const canAccessExports = true;
-  const canAccessReports = true;
+  // Xác định quyền hạn theo đúng vai trò thực tế của người dùng đã đăng nhập (RBAC)
+  const userRole = currentUser?.role || null;
+
+  const canAccessDashboard = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(userRole);
+  const canAccessImport = ['ADMIN', 'QTTS', 'HCQT'].includes(userRole);
+  const canAccessPOs = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(userRole);
+  const canAccessUnitPortal = ['ADMIN', 'UNIT_USER', 'DON_VI'].includes(userRole);
+  const canAccessSupplierPortal = ['ADMIN', 'SUPPLIER'].includes(userRole);
+  const canAccessReceipt = ['ADMIN', 'QTTS', 'UNIT_USER', 'DON_VI', 'HCQT'].includes(userRole);
+  const canAccessDeliveries = ['ADMIN', 'QTTS', 'HCQT'].includes(userRole);
+  const canAccessExports = ['ADMIN', 'QTTS', 'HCQT'].includes(userRole);
+  const canAccessReports = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(userRole);
+
+  // Huy hiệu hiển thị tương ứng vai trò người dùng trên Topbar
+  const getRoleBadge = (roleCode) => {
+    switch (roleCode) {
+      case 'ADMIN':
+        return { label: 'Quản trị viên (ADMIN)', bg: '#fef2f2', color: '#991b1b', icon: ShieldCheck };
+      case 'QTTS':
+        return { label: 'Cán bộ QTTS', bg: '#eff6ff', color: '#1e40af', icon: ShieldCheck };
+      case 'HCQT':
+        return { label: 'Cán bộ HCQT', bg: '#f0fdf4', color: '#166534', icon: ShieldCheck };
+      case 'APPROVER':
+        return { label: 'Lãnh đạo Phê duyệt', bg: '#faf5ff', color: '#6b21a8', icon: UserCheck };
+      case 'DON_VI':
+      case 'UNIT_USER':
+        return { label: 'Cán bộ Đơn vị (CN/PGD)', bg: '#fffbeb', color: '#92400e', icon: Building2 };
+      case 'SUPPLIER':
+        return { label: 'Đối tác / NCC', bg: '#fff7ed', color: '#9a3412', icon: Store };
+      default:
+        return { label: 'Người xem (VIEWER)', bg: '#f8fafc', color: '#475569', icon: Eye };
+    }
+  };
+
+  const currentBadge = getRoleBadge(userRole);
+  const CurrentRoleIcon = currentBadge.icon;
 
   // 0. Nếu đối tác truy cập qua link riêng có token -> hiển thị trực tiếp Cổng Đối Tác (không có menu quản trị)
   if (supplierToken) {
@@ -152,14 +197,16 @@ export function App() {
 
         <nav className="sidebar-nav">
           {/* 1. Tổng quan Dashboard */}
-          <button
-            type="button"
-            className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setCurrentView('dashboard')}
-          >
-            <LayoutDashboard size={18} />
-            Tổng quan (Dashboard)
-          </button>
+          {canAccessDashboard && (
+            <button
+              type="button"
+              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentView('dashboard')}
+            >
+              <LayoutDashboard size={18} />
+              Tổng quan (Dashboard)
+            </button>
+          )}
 
           {/* 2. Nhập Phiếu & Tạo PO (QTTS / ADMIN / HCQT) */}
           {canAccessImport && (
@@ -279,68 +326,93 @@ export function App() {
           </div>
 
           <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Nút đăng nhập Quản trị Admin */}
-            <button
-              type="button"
-              onClick={() => setShowAdminLoginModal(true)}
-              style={{
-                background: '#003366',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-              }}
-              title="Đăng nhập trang quản trị (Admin / Admin2026)"
-            >
-              🔐 Admin Portal
-            </button>
-
             {/* Chuông thông báo nghiệp vụ */}
             <NotificationBell currentUser={currentUser} onNavigateToPO={handleOpenPO} />
 
-            {/* Thông tin tài khoản Quản trị viên (ADMIN) */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 14px',
-                background: '#ffffff',
-                border: '1px solid #dce4ee',
-                borderRadius: '6px',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-              }}
-            >
-              <div
+            {/* Thông tin tài khoản đăng nhập tương ứng */}
+            {currentUser ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    background: '#ffffff',
+                    border: '1px solid #dce4ee',
+                    borderRadius: '6px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '50%',
+                      background: currentBadge.bg,
+                      color: currentBadge.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <CurrentRoleIcon size={15} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                    <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
+                      {currentUser?.full_name || currentUser?.name || currentUser?.email}
+                    </span>
+                    <span style={{ fontSize: '11px', color: currentBadge.color, fontWeight: 600 }}>
+                      {currentBadge.label} {currentUser?.department_name ? `• ${currentUser.department_name}` : currentUser?.supplier_name ? `• ${currentUser.supplier_name}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    background: '#fff',
+                    color: '#64748b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '6px 11px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Đăng xuất khỏi hệ thống"
+                >
+                  <LogOut size={14} />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowLoginModal(true)}
                 style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '50%',
-                  background: '#fef2f2',
-                  color: '#991b1b',
+                  background: '#003366',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '7px 14px',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  gap: '6px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                 }}
               >
-                <ShieldCheck size={16} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
-                  {currentUser?.full_name || 'Quản trị viên Hệ thống'}
-                </span>
-                <span style={{ fontSize: '11px', color: '#991b1b', fontWeight: 600 }}>
-                  Quản trị viên (ADMIN) • Toàn quyền
-                </span>
-              </div>
-            </div>
+                🔐 Đăng nhập hệ thống
+              </button>
+            )}
           </div>
         </header>
 
@@ -358,9 +430,8 @@ export function App() {
           {currentView === 'import' && (
             <ImportPage
               onCreatePO={createPO}
-              isExporting={isExporting}
-              generateNextPO={generateNextPO}
-              onNavigate={setCurrentView}
+              onNavigateToPO={handleOpenPO}
+              onRefreshPOs={refreshPOs}
             />
           )}
 
@@ -368,12 +439,15 @@ export function App() {
             <POManagement
               pos={pos}
               activePOId={activePOId}
-              onSetActivePOId={setActivePOId}
+              setActivePOId={setActivePOId}
               onUpdateStatus={updateStatus}
               onUpdateOrderInfo={updateOrderInfo}
               onExportPO={exportPO}
               onDeletePO={deletePO}
-              isExporting={isExporting}
+              onSeedDemo={seedDemoData}
+              onNavigateToReceipt={handleNavigateToReceipt}
+              refreshPOs={refreshPOs}
+              currentUser={currentUser}
             />
           )}
 
@@ -382,7 +456,6 @@ export function App() {
               pos={pos}
               currentUser={currentUser}
               onNavigateToReceipt={handleNavigateToReceipt}
-              onOpenPO={handleOpenPO}
             />
           )}
 
@@ -391,8 +464,6 @@ export function App() {
               pos={pos}
               currentUser={currentUser}
               onRefreshPOs={refreshPOs}
-              preselectedPONumber={initialUrlParams.po}
-              preselectedSupplierCode={initialUrlParams.supplier}
             />
           )}
 
@@ -400,17 +471,17 @@ export function App() {
             <ReceiptConfirmationPage
               pos={pos}
               preselectedPOId={receiptPreselectedPOId}
-              currentUser={currentUser}
+              onUpdateOrderInfo={updateOrderInfo}
               onRefreshPOs={refreshPOs}
-              onNavigateToPO={handleOpenPO}
+              currentUser={currentUser}
             />
           )}
 
           {currentView === 'deliveries' && (
             <DeliveryTrackingPage
               pos={pos}
-              onOpenPO={handleOpenPO}
-              onNavigateToReceipt={handleNavigateToReceipt}
+              onRefreshPOs={refreshPOs}
+              currentUser={currentUser}
             />
           )}
 
@@ -430,14 +501,14 @@ export function App() {
         </div>
       </main>
 
-      {/* Modal đăng nhập Quản trị dành cho https://quanlyts.com/admin */}
+      {/* Modal đăng nhập luôn luôn popup trước khi vào phần mềm */}
       <AdminLoginModal
-        isOpen={showAdminLoginModal}
-        onClose={() => setShowAdminLoginModal(false)}
-        onSuccess={(user) => {
-          if (refreshUser) refreshUser();
-          setCurrentView('dashboard');
+        isOpen={showLoginModal || (!currentUser && !supplierToken && !authLoading)}
+        canClose={Boolean(currentUser)}
+        onClose={() => {
+          if (currentUser) setShowLoginModal(false);
         }}
+        onSuccess={handleLoginSuccess}
       />
     </div>
   );

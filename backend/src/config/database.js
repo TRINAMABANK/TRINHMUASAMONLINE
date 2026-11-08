@@ -598,6 +598,7 @@ async function ensureSystemRolesAndUsers(db) {
   const systemRoles = [
     { code: 'ADMIN', name: 'Quản trị hệ thống', desc: 'Toàn quyền cấu hình và quản trị' },
     { code: 'QTTS', name: 'Quản lý Tài sản / BP Mua sắm', desc: 'Tạo PO, phân bổ, quản lý hồ sơ và master PO' },
+    { code: 'HCQT', name: 'Cán bộ Hành chính Quản trị', desc: 'Rà soát hồ sơ, phân loại thanh toán và phối hợp' },
     { code: 'APPROVER', name: 'Lãnh đạo Phê duyệt', desc: 'Phê duyệt hồ sơ trình ký và đề xuất mua sắm' },
     { code: 'DON_VI', name: 'Đơn vị Nhận hàng', desc: 'Chi nhánh/PGD/OneBank tra cứu và xác nhận nhận hàng' },
     { code: 'UNIT_USER', name: 'Cán bộ Đơn vị (CN/PGD)', desc: 'Chi nhánh/PGD/OneBank tra cứu và xác nhận nhận hàng' },
@@ -645,13 +646,14 @@ async function ensureSystemRolesAndUsers(db) {
   // 4. Đảm bảo các tài khoản chuẩn tồn tại và gán đúng role
   const requiredUsers = [
     { email: 'admin@namabank.com.vn', name: 'Quản trị viên Hệ thống', role: 'ADMIN', pwdHash: hashAdmin2026, secHash: hashNamABank },
-    { email: 'qtts@namabank.com.vn', name: 'Chuyên viên Quản lý Tài sản', role: 'QTTS', pwdHash: hashNamABank, deptCode: 'HOI_SO' },
-    { email: 'approver@namabank.com.vn', name: 'Trưởng Ban Phê duyệt Mua sắm', role: 'APPROVER', pwdHash: hashNamABank, deptCode: 'HOI_SO' },
-    { email: 'cnhanoi@namabank.com.vn', name: 'Kế toán CN Hà Nội', role: 'DON_VI', pwdHash: hashNamABank, deptCode: 'CN_HANOI' },
-    { email: 'hanoi_unit@namabank.com.vn', name: 'Phạm Văn D - Cán bộ CN Hà Nội', role: 'UNIT_USER', pwdHash: hashNamABank, deptCode: 'CN_HANOI' },
-    { email: 'ncc_fti@supplier.com', name: 'Đại diện FTI Tech', role: 'SUPPLIER', pwdHash: hashNamABank, suppCode: 'FTI' },
-    { email: 'supplier_fti@namabank.com.vn', name: 'Đại diện Đối tác FTI Telecom', role: 'SUPPLIER', pwdHash: hashNamABank, suppCode: 'FTI' },
-    { email: 'viewer@namabank.com.vn', name: 'Người xem dữ liệu (VIEWER)', role: 'VIEWER', pwdHash: hashNamABank }
+    { email: 'qtts@namabank.com.vn', name: 'Chuyên viên Quản lý Tài sản', role: 'QTTS', pwdHash: hashAdmin2026, secHash: hashNamABank, deptCode: 'HOI_SO' },
+    { email: 'hcqt@namabank.com.vn', name: 'Cán bộ Hành chính Quản trị', role: 'HCQT', pwdHash: hashAdmin2026, secHash: hashNamABank, deptCode: 'HOI_SO' },
+    { email: 'approver@namabank.com.vn', name: 'Trưởng Ban Phê duyệt Mua sắm', role: 'APPROVER', pwdHash: hashAdmin2026, secHash: hashNamABank, deptCode: 'HOI_SO' },
+    { email: 'cnhanoi@namabank.com.vn', name: 'Kế toán CN Hà Nội', role: 'DON_VI', pwdHash: hashAdmin2026, secHash: hashNamABank, deptCode: 'CN_HANOI' },
+    { email: 'hanoi_unit@namabank.com.vn', name: 'Phạm Văn D - Cán bộ CN Hà Nội', role: 'UNIT_USER', pwdHash: hashAdmin2026, secHash: hashNamABank, deptCode: 'CN_HANOI' },
+    { email: 'ncc_fti@supplier.com', name: 'Đại diện FTI Tech', role: 'SUPPLIER', pwdHash: hashAdmin2026, secHash: hashNamABank, suppCode: 'FTI' },
+    { email: 'supplier_fti@namabank.com.vn', name: 'Đại diện Đối tác FTI Telecom', role: 'SUPPLIER', pwdHash: hashAdmin2026, secHash: hashNamABank, suppCode: 'FTI' },
+    { email: 'viewer@namabank.com.vn', name: 'Người xem dữ liệu (VIEWER)', role: 'VIEWER', pwdHash: hashAdmin2026, secHash: hashNamABank }
   ];
 
   for (const u of requiredUsers) {
