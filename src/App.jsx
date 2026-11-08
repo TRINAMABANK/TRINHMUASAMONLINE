@@ -10,7 +10,6 @@ import { ReceiptConfirmationPage } from './pages/ReceiptConfirmationPage.jsx';
 import { DeliveryTrackingPage } from './pages/DeliveryTrackingPage.jsx';
 import { LifecycleReportsPage } from './pages/LifecycleReportsPage.jsx';
 
-import { UserRoleSelector } from './components/UserRoleSelector.jsx';
 import { NotificationBell } from './components/NotificationBell.jsx';
 import { AdminLoginModal } from './components/AdminLoginModal.jsx';
 
@@ -29,12 +28,13 @@ import {
   PackageCheck,
   Truck,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 import './styles/main.css';
 
 export function App() {
-  const { currentUser, role, switchRole, isLoading: authLoading } = useAuth();
+  const { currentUser, role, refreshUser, isLoading: authLoading } = useAuth();
 
   // Đọc tham số URL khi đối tác truy cập bằng link riêng
   const initialUrlParams = useMemo(() => {
@@ -119,15 +119,15 @@ export function App() {
     setCurrentView('receipt');
   };
 
-  // Xác định quyền truy cập từng menu theo RBAC
-  const canAccessImport = ['ADMIN', 'QTTS', 'HCQT'].includes(role);
-  const canAccessPOs = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(role);
-  const canAccessUnitPortal = ['ADMIN', 'QTTS', 'UNIT_USER', 'HCQT'].includes(role);
-  const canAccessSupplierPortal = ['ADMIN', 'QTTS', 'SUPPLIER'].includes(role);
-  const canAccessReceipt = ['ADMIN', 'QTTS', 'UNIT_USER', 'HCQT'].includes(role);
-  const canAccessDeliveries = ['ADMIN', 'QTTS', 'HCQT'].includes(role);
-  const canAccessExports = ['ADMIN', 'QTTS', 'HCQT'].includes(role);
-  const canAccessReports = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(role);
+  // Toàn bộ tính năng mở đầy đủ cho Quản trị viên (ADMIN)
+  const canAccessImport = true;
+  const canAccessPOs = true;
+  const canAccessUnitPortal = true;
+  const canAccessSupplierPortal = true;
+  const canAccessReceipt = true;
+  const canAccessDeliveries = true;
+  const canAccessExports = true;
+  const canAccessReports = true;
 
   // 0. Nếu đối tác truy cập qua link riêng có token -> hiển thị trực tiếp Cổng Đối Tác (không có menu quản trị)
   if (supplierToken) {
@@ -305,8 +305,42 @@ export function App() {
             {/* Chuông thông báo nghiệp vụ */}
             <NotificationBell currentUser={currentUser} onNavigateToPO={handleOpenPO} />
 
-            {/* Bộ chuyển đổi nhanh vai trò kiểm thử RBAC */}
-            <UserRoleSelector currentUser={currentUser} onSwitchRole={switchRole} isLoading={authLoading} />
+            {/* Thông tin tài khoản Quản trị viên (ADMIN) */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                background: '#ffffff',
+                border: '1px solid #dce4ee',
+                borderRadius: '6px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}
+            >
+              <div
+                style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  background: '#fef2f2',
+                  color: '#991b1b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <ShieldCheck size={16} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
+                  {currentUser?.full_name || 'Quản trị viên Hệ thống'}
+                </span>
+                <span style={{ fontSize: '11px', color: '#991b1b', fontWeight: 600 }}>
+                  Quản trị viên (ADMIN) • Toàn quyền
+                </span>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -401,7 +435,7 @@ export function App() {
         isOpen={showAdminLoginModal}
         onClose={() => setShowAdminLoginModal(false)}
         onSuccess={(user) => {
-          switchRole('ADMIN');
+          if (refreshUser) refreshUser();
           setCurrentView('dashboard');
         }}
       />
