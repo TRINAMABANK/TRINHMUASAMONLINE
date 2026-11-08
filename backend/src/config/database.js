@@ -496,6 +496,11 @@ async function createSchemaTables(db) {
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'CHUA_GIAO';
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS total_qty INTEGER DEFAULT 0;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS created_by_id TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_id TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_name TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_delivery_date TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivered_quantity INTEGER DEFAULT 0;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS received_quantity INTEGER DEFAULT 0;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_confirmed_at TIMESTAMP WITH TIME ZONE;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE;
 
