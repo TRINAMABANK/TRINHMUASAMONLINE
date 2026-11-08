@@ -49,6 +49,18 @@ export function App() {
     return { view: '', po: '', supplier: '' };
   }, []);
 
+  // Nhận diện token đối tác qua URL /supplier-portal/:token hoặc ?token=...
+  const supplierToken = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const path = window.location.pathname;
+    if (path.startsWith('/supplier-portal/')) {
+      const parts = path.replace('/supplier-portal/', '').split('/');
+      return parts[0]?.split('?')[0] || '';
+    }
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get('token') || '';
+  }, []);
+
   // Nhận diện đường dẫn /admin hoặc view=admin
   const isAdminPath = typeof window !== 'undefined' && (
     window.location.pathname.startsWith('/admin') ||
@@ -116,6 +128,11 @@ export function App() {
   const canAccessDeliveries = ['ADMIN', 'QTTS', 'HCQT'].includes(role);
   const canAccessExports = ['ADMIN', 'QTTS', 'HCQT'].includes(role);
   const canAccessReports = ['ADMIN', 'QTTS', 'HCQT', 'APPROVER', 'VIEWER'].includes(role);
+
+  // 0. Nếu đối tác truy cập qua link riêng có token -> hiển thị trực tiếp Cổng Đối Tác (không có menu quản trị)
+  if (supplierToken) {
+    return <SupplierPortalPage token={supplierToken} />;
+  }
 
   return (
     <div className="app-layout">

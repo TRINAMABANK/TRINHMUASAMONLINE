@@ -471,13 +471,24 @@ async function createSchemaTables(db) {
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS stt INTEGER DEFAULT 1;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS request_date TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS unit_name TEXT;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS supplier_id TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS supplier_name TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS qty INTEGER DEFAULT 1;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS price NUMERIC(18, 2) DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS total_price NUMERIC(18, 2) DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS contact_person TEXT;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS phone TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS purpose TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS msp TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS pay_group TEXT;
     ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS received_qty INTEGER DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS specification TEXT;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS unit TEXT;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS department_id TEXT;
 
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS title TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS po TEXT;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS requester_name TEXT;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS source_file TEXT;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS submission_status TEXT DEFAULT 'KHOI_TAO';
@@ -485,6 +496,8 @@ async function createSchemaTables(db) {
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'CHUA_GIAO';
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS total_qty INTEGER DEFAULT 0;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS created_by_id TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_confirmed_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE;
 
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS po_id TEXT;
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS object_type TEXT;
@@ -492,6 +505,71 @@ async function createSchemaTables(db) {
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS previous_status TEXT;
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS actor_role TEXT;
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS event_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+    -- 23. Bảng người liên hệ nhà cung cấp (supplier_contacts)
+    CREATE TABLE IF NOT EXISTS supplier_contacts (
+      id TEXT PRIMARY KEY,
+      supplier_id TEXT REFERENCES suppliers(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      role_title TEXT,
+      is_primary BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 24. Bảng lời mời đặt hàng qua link riêng (supplier_order_invitations)
+    CREATE TABLE IF NOT EXISTS supplier_order_invitations (
+      id TEXT PRIMARY KEY,
+      supplier_id TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      purchase_order_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      recipient_email TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+      revoked_at TIMESTAMP WITH TIME ZONE,
+      status TEXT NOT NULL DEFAULT 'EMAIL_DRAFT_CREATED',
+      created_by TEXT REFERENCES users(id),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 25. Bảng nhật ký email đơn hàng (supplier_order_email_logs)
+    CREATE TABLE IF NOT EXISTS supplier_order_email_logs (
+      id TEXT PRIMARY KEY,
+      invitation_id TEXT NOT NULL REFERENCES supplier_order_invitations(id) ON DELETE CASCADE,
+      recipient_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      email_body TEXT NOT NULL,
+      draft_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      admin_confirmed_sent_at TIMESTAMP WITH TIME ZONE,
+      created_by TEXT REFERENCES users(id)
+    );
+
+    -- 26. Bảng xác nhận đơn hàng từ phía nhà cung cấp (supplier_po_confirmations)
+    CREATE TABLE IF NOT EXISTS supplier_po_confirmations (
+      id TEXT PRIMARY KEY,
+      invitation_id TEXT REFERENCES supplier_order_invitations(id) ON DELETE SET NULL,
+      po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      supplier_id TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+      confirmed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      expected_delivery_date TIMESTAMP WITH TIME ZONE,
+      note TEXT,
+      confirmed_by_name TEXT,
+      confirmed_by_ip TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_confirmed_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_delivery_date TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE;
+
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS delivered_quantity INTEGER DEFAULT 0;
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS delivery_note TEXT;
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS attachment_id TEXT;
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS confirmed_by TEXT;
+    ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE;
   `;
 
   await db.exec(ddl);

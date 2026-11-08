@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { OrderEmailModal } from '../components/OrderEmailModal.jsx';
+import { SupplierOrderManagementSection } from '../components/SupplierOrderManagementSection.jsx';
 import { formatCurrency, formatNumber } from '../utils/currencyUtils.js';
 import { formatExcelDate, todayYMD } from '../utils/dateUtils.js';
 import { WORKFLOW_STAGES } from '../utils/constants.js';
@@ -452,6 +453,9 @@ export function POManagement({
                   {isExporting ? 'Đang xuất...' : 'Tải 01 file Excel (02 Sheet)'}
                 </button>
               </div>
+
+              {/* QUẢN LÝ GỬI ĐƠN ĐẶT HÀNG CHO TỪNG NHÀ CUNG CẤP */}
+              <SupplierOrderManagementSection po={activePO} onPoUpdated={refreshPOs} />
 
               {/* Lịch sử xử lý logs */}
               <div className="modal-section">

@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { deliveryApi } from '../services/api/lifecycleApi.js';
+import React, { useState, useEffect, useCallback } from 'react';
+import { supplierPortalApi } from '../services/api/supplierPortalApi.js';
 import { formatCurrency, formatNumber } from '../utils/currencyUtils.js';
 import {
   Store,
@@ -15,854 +15,708 @@ import {
   User,
   Paperclip,
   Check,
-  X
+  X,
+  Building,
+  ShieldCheck,
+  Download
 } from 'lucide-react';
 
 export function SupplierPortalPage({
+  token: propToken = '',
   pos = [],
-  currentUser,
-  onRefreshPOs,
-  preselectedPONumber = '',
-  preselectedSupplierCode = ''
+  currentUser = null,
+  onRefreshPOs
 }) {
-  const [selectedPO, setSelectedPO] = useState(null);
-  const [activeTab, setActiveTab] = useState('list'); // 'list' | 'dispatch'
-  const [isLoading, setIsLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-
-  // Đọc tham số PO và NCC từ props hoặc URL query
-  const effectivePONumber = preselectedPONumber || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('po') : '') || '';
-  const effectiveSupplierCode = preselectedSupplierCode || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('supplier') : '') || '';
-
-  // Tên nhà cung cấp của user hiện tại
-  const supplierName = currentUser?.supplier_name || (effectiveSupplierCode ? `Nhà cung cấp ${effectiveSupplierCode}` : 'Công ty Cổ phần Viễn thông FTI');
-
-  // Lọc PO thuộc về nhà cung cấp này
-  const supplierPOs = useMemo(() => {
-    return pos.filter(po => {
-      if (effectivePONumber) {
-        const poNum = (po.po || po.po_number || po.poNumber || '').toLowerCase();
-        if (poNum === effectivePONumber.toLowerCase()) return true;
+  // 1. Nhận diện token bảo mật từ props hoặc URL
+  const [token, setToken] = useState(() => {
+    if (propToken) return propToken;
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path.startsWith('/supplier-portal/')) {
+        return path.replace('/supplier-portal/', '').split('/')[0].split('?')[0];
       }
-      if (currentUser?.role === 'SUPPLIER' || effectiveSupplierCode) {
-        const target = (effectiveSupplierCode || supplierName).toLowerCase();
-        return (po.items || []).some(item => {
-          const sup = (item.supplier || item.supplier_name || '').toLowerCase();
-          return sup.includes(target) || target.includes(sup) || sup.includes('fti');
+      return new URLSearchParams(window.location.search).get('token') || '';
+    }
+    return '';
+  });
+
+  // State chế độ Cổng Đối Tác qua Token
+  const [portalData, setPortalData] = useState(null);
+  const [loading, setLoading] = useState(Boolean(token));
+  const [errorMessage, setErrorMessage] = useState('');
+  const [activeTab, setActiveTab] = useState('confirm'); // 'confirm' | 'dispatch' | 'history'
+
+  // Form xác nhận đặt hàng
+  const [expectedDate, setExpectedDate] = useState('');
+  const [confirmNote, setConfirmNote] = useState('');
+  const [confirmedByName, setConfirmedByName] = useState('');
+  const [isSubmittingConfirm, setIsSubmittingConfirm] = useState(false);
+  const [confirmSuccessMsg, setConfirmSuccessMsg] = useState('');
+
+  // Form xuất kho / giao hàng
+  const [dispatchedAt, setDispatchedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [carrier, setCarrier] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
+  const [dispatcherName, setDispatcherName] = useState('');
+  const [dispatchItemQtys, setDispatchItemQtys] = useState({});
+  const [isSubmittingDispatch, setIsSubmittingDispatch] = useState(false);
+  const [dispatchSuccessMsg, setDispatchSuccessMsg] = useState('');
+
+  // 2. Nạp dữ liệu qua Token bảo mật từ Backend
+  const loadPortalData = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await supplierPortalApi.getPortalData(token);
+      if (res.success && res.data) {
+        setPortalData(res.data);
+        // Khởi tạo ngày dự kiến nếu đã có
+        if (res.data.confirmation?.expected_delivery_date) {
+          setExpectedDate(String(res.data.confirmation.expected_delivery_date).slice(0, 10));
+        } else if (res.data.po?.expected_delivery_date) {
+          setExpectedDate(String(res.data.po.expected_delivery_date).slice(0, 10));
+        }
+        // Khởi tạo số lượng xuất kho mặc định = số lượng còn lại
+        const initialQtys = {};
+        (res.data.items || []).forEach(it => {
+          initialQtys[it.id] = it.remainingQty || 0;
         });
+        setDispatchItemQtys(initialQtys);
       }
-      return true; // Admin/QTTS test xem được tất cả
-    });
-  }, [pos, currentUser, supplierName, effectivePONumber, effectiveSupplierCode]);
-
-  // Modal hẹn ngày giao & xem lịch sử thay đổi
-  const [showDateModal, setShowDateModal] = useState(false);
-  const [newExpectedDate, setNewExpectedDate] = useState('');
-  const [dateChangeReason, setDateChangeReason] = useState('');
-  const [dateHistory, setDateHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // Ô nhập trực tiếp THỜI GIAN DỰ KIẾN GIAO HÀNG theo Mục D
-  const [directExpectedDate, setDirectExpectedDate] = useState('');
-
-  // Form báo xuất kho / giao hàng nhiều đợt
-  const [transporterName, setTransporterName] = useState('Viettel Post / Giao hàng nhanh');
-  const [transporterPhone, setTransporterPhone] = useState('0988.123.456');
-  const [actualDeliveryDate, setActualDeliveryDate] = useState(new Date().toISOString().slice(0, 10));
-  const [deliveryNotes, setDeliveryNotes] = useState('Xuất kho đợt 1 theo phiếu xuất kho nội bộ');
-  const [dispatchItems, setDispatchItems] = useState([]);
-
-  // Khi chọn PO, khởi tạo dữ liệu dispatch và lọc đúng hàng hóa của NCC
-  const handleSelectPO = async (po) => {
-    setSelectedPO(po);
-    const targetSup = (effectiveSupplierCode || supplierName || '').toLowerCase();
-    const filteredItems = (po.items || []).filter(item => {
-      if (!effectiveSupplierCode && currentUser?.role !== 'SUPPLIER') return true;
-      const sup = (item.supplier || item.supplier_name || '').toLowerCase();
-      return sup.includes(targetSup) || targetSup.includes(sup) || sup.includes('fti');
-    });
-    const effectiveItems = filteredItems.length > 0 ? filteredItems : (po.items || []);
-
-    const items = effectiveItems.map(item => ({
-      id: item.id,
-      name: item.name || item.item,
-      spec: item.spec,
-      unit: item.unit || item.unit_name,
-      qty: Number(item.qty) || 0,
-      price: Number(item.price) || 0,
-      amount: Number(item.amount) || ((Number(item.qty) || 0) * (Number(item.price) || 0)),
-      dispatched_qty: Number(item.qty) || 0 // Mặc định giao đủ số lượng còn lại
-    }));
-    setDispatchItems(items);
-
-    if (po.expected_delivery_date) {
-      setDirectExpectedDate(String(po.expected_delivery_date).slice(0, 10));
+    } catch (err) {
+      setErrorMessage(err.message || 'Không thể xác thực liên kết đối tác.');
+    } finally {
+      setLoading(false);
     }
-  };
-
-  // Tự động chọn PO khi có tham số trên URL
-  useEffect(() => {
-    if (effectivePONumber && pos.length > 0) {
-      const match = pos.find(p =>
-        (p.po && p.po.toLowerCase() === effectivePONumber.toLowerCase()) ||
-        (p.po_number && p.po_number.toLowerCase() === effectivePONumber.toLowerCase()) ||
-        (p.poNumber && p.poNumber.toLowerCase() === effectivePONumber.toLowerCase())
-      );
-      if (match) {
-        handleSelectPO(match);
-      }
-    }
-  }, [effectivePONumber, pos]);
+  }, [token]);
 
   useEffect(() => {
-    if (supplierPOs.length > 0 && !selectedPO && !effectivePONumber) {
-      handleSelectPO(supplierPOs[0]);
+    if (token) {
+      loadPortalData();
     }
-  }, [supplierPOs, selectedPO, effectivePONumber]);
+  }, [token, loadPortalData]);
 
-  // Hành động 1: Nhà cung cấp xác nhận đơn hàng
-  const handleConfirmOrder = async () => {
-    if (!selectedPO) return;
-    if (!window.confirm(`Xác nhận tiếp nhận thực hiện đơn hàng ${selectedPO.poNumber || selectedPO.po_number}?`)) return;
-
-    setIsLoading(true);
-    try {
-      const res = await deliveryApi.confirmOrder(selectedPO.id, 'NCC đã tiếp nhận đơn hàng và chuẩn bị xuất kho.');
-      if (res.success) {
-        setSuccessMessage('Đã xác nhận tiếp nhận đơn hàng thành công!');
-        if (onRefreshPOs) onRefreshPOs();
-      }
-    } catch (e) {
-      alert(`Lỗi xác nhận đơn: ${e.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Cập nhật nhanh THỜI GIAN DỰ KIẾN GIAO HÀNG theo Mục D
-  const handleQuickSaveExpectedDate = async (e) => {
-    if (e) e.preventDefault();
-    if (!directExpectedDate) {
-      alert('Vui lòng chọn ngày hẹn giao dự kiến.');
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const res = await deliveryApi.updateExpectedDate(selectedPO.id, directExpectedDate, 'Nhà cung cấp cập nhật qua Cổng Đối tác');
-      if (res.success) {
-        setSuccessMessage(`Đã cập nhật thời gian dự kiến giao hàng: ${directExpectedDate}`);
-        if (onRefreshPOs) onRefreshPOs();
-      }
-    } catch (e) {
-      alert(`Lỗi cập nhật ngày hẹn giao: ${e.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Mở modal hẹn ngày giao & tải lịch sử thay đổi
-  const openDateModal = async () => {
-    if (!selectedPO) return;
-    setShowDateModal(true);
-    setLoadingHistory(true);
-    try {
-      const res = await deliveryApi.getExpectedDateHistory(selectedPO.id);
-      if (res.success && Array.isArray(res.data)) {
-        setDateHistory(res.data);
-      }
-    } catch (e) {
-      console.warn('Lỗi tải lịch sử ngày:', e);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  // Hành động 2: Cập nhật ngày hẹn giao có lưu lý do
-  const handleSaveExpectedDate = async (e) => {
+  // 3. Xử lý Chức năng 1: Xác nhận đơn đặt hàng
+  const handleConfirmOrder = async (e) => {
     e.preventDefault();
-    if (!newExpectedDate) {
-      alert('Vui lòng chọn ngày hẹn giao dự kiến.');
+    if (!expectedDate) {
+      alert('Vui lòng chọn Ngày dự kiến giao hàng.');
       return;
     }
-
-    setIsLoading(true);
+    setIsSubmittingConfirm(true);
+    setConfirmSuccessMsg('');
     try {
-      const res = await deliveryApi.updateExpectedDate(selectedPO.id, newExpectedDate, dateChangeReason);
+      const res = await supplierPortalApi.confirmPo(token, {
+        expected_delivery_date: expectedDate,
+        note: confirmNote,
+        confirmed_by_name: confirmedByName || portalData?.supplier?.name
+      });
       if (res.success) {
-        setSuccessMessage('Đã cập nhật ngày hẹn giao và lưu vết lịch sử thành công!');
-        setShowDateModal(false);
-        setNewExpectedDate('');
-        setDateChangeReason('');
-        if (onRefreshPOs) onRefreshPOs();
+        setConfirmSuccessMsg('Quý Công ty đã xác nhận đơn đặt hàng thành công!');
+        await loadPortalData();
+        setTimeout(() => setConfirmSuccessMsg(''), 4000);
       }
-    } catch (e) {
-      alert(`Lỗi cập nhật: ${e.message}`);
+    } catch (err) {
+      alert(`Lỗi xác nhận: ${err.message}`);
     } finally {
-      setIsLoading(false);
+      setIsSubmittingConfirm(false);
     }
   };
 
-  // Hành động 3: Báo xuất kho & Bắt đầu giao hàng (Nhiều đợt)
+  // 4. Xử lý Chức năng 2: Xác nhận đã xuất kho / giao hàng
   const handleDispatchDelivery = async (e) => {
     e.preventDefault();
-    if (!selectedPO) return;
-
-    setIsLoading(true);
-    try {
-      const payload = {
-        delivery_code: `DEL-${selectedPO.poNumber || selectedPO.po_number}-${Date.now().toString().slice(-4)}`,
-        transporter_name: transporterName,
-        transporter_phone: transporterPhone,
-        actual_delivery_date: actualDeliveryDate,
-        notes: deliveryNotes,
-        items: dispatchItems.map(it => ({
+    const deliveredItems = [];
+    (portalData?.items || []).forEach(it => {
+      const qty = Number(dispatchItemQtys[it.id] || 0);
+      if (qty > 0) {
+        deliveredItems.push({
           po_item_id: it.id,
-          dispatched_qty: it.dispatched_qty
-        }))
-      };
-
-      const res = await deliveryApi.dispatchDelivery(selectedPO.id, payload);
-      if (res.success) {
-        setSuccessMessage('Đã báo xuất kho và cập nhật trạng thái "Đang giao hàng" thành công!');
-        setActiveTab('list');
-        if (onRefreshPOs) onRefreshPOs();
+          quantity_delivered: qty,
+          note: `Xuất kho mặt hàng ${it.item_name || ''}`
+        });
       }
-    } catch (e) {
-      alert(`Lỗi xuất kho giao hàng: ${e.message}`);
+    });
+
+    if (deliveredItems.length === 0) {
+      alert('Vui lòng nhập số lượng thực tế xuất kho (> 0) cho ít nhất một mặt hàng.');
+      return;
+    }
+
+    setIsSubmittingDispatch(true);
+    setDispatchSuccessMsg('');
+    try {
+      const res = await supplierPortalApi.dispatchDelivery(token, {
+        dispatched_at: dispatchedAt,
+        delivered_items: deliveredItems,
+        delivery_note: deliveryNote,
+        tracking_number: trackingNumber,
+        carrier: carrier,
+        confirmed_by_name: dispatcherName || portalData?.supplier?.name
+      });
+
+      if (res.success) {
+        setDispatchSuccessMsg(`Xác nhận xuất kho thành công! (${res.deliveryCode})`);
+        setDeliveryNote('');
+        setTrackingNumber('');
+        await loadPortalData();
+        setActiveTab('history');
+        setTimeout(() => setDispatchSuccessMsg(''), 5000);
+      }
+    } catch (err) {
+      alert(`Lỗi xuất kho: ${err.message}`);
     } finally {
-      setIsLoading(false);
+      setIsSubmittingDispatch(false);
     }
   };
 
+  // =========================================================================
+  // GIAO DIỆN CỔNG ĐỐI TÁC RIÊNG BIỆT (KHÔNG CÓ MENU QUẢN TRỊ ADMIN)
+  // =========================================================================
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', fontFamily: 'sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spin" style={{ width: '40px', height: '40px', border: '4px solid #0056A3', borderTopColor: 'transparent', borderRadius: '50%', margin: '0 auto 16px' }} />
+          <h3 style={{ color: '#003366', margin: 0 }}>Đang kiểm tra liên kết bảo mật đối tác...</h3>
+          <p style={{ color: '#64748b', fontSize: '13px', marginTop: '6px' }}>Hệ thống Quản lý Mua sắm Nam A Bank</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Trường hợp Link lỗi / hết hạn / bị thu hồi
+  if (errorMessage) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '20px', fontFamily: 'sans-serif' }}>
+        <div style={{ maxWidth: '520px', width: '100%', background: '#ffffff', borderRadius: '12px', padding: '36px', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', textAlign: 'center' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+            <AlertCircle size={36} />
+          </div>
+          <h2 style={{ color: '#991b1b', margin: '0 0 12px', fontSize: '20px', fontWeight: 700 }}>
+            Không Thể Truy Cập Cổng Đối Tác
+          </h2>
+          <p style={{ color: '#475569', fontSize: '14px', lineHeight: 1.6, margin: '0 0 20px' }}>
+            {errorMessage}
+          </p>
+          <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px', color: '#334155', textAlign: 'left', lineHeight: 1.5 }}>
+            <strong>Đầu mối hỗ trợ Nam A Bank:</strong><br />
+            • Cán bộ phụ trách: <strong>Mr. Trí</strong><br />
+            • Số điện thoại: <strong>0982441446</strong><br />
+            • Email: admin@namabank.com.vn
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!portalData) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+        Chưa tìm thấy dữ liệu liên kết đối tác. Vui lòng kiểm tra lại đường link từ email.
+      </div>
+    );
+  }
+
+  const { po, supplier, items = [], confirmation, deliveries = [] } = portalData;
+  const isConfirmed = Boolean(confirmation || po.status === 'SUPPLIER_CONFIRMED');
+
   return (
-    <div className="page-container supplier-portal-page">
-      {/* Banner Cổng NCC */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-          borderRadius: '8px',
-          padding: '20px 24px',
-          color: '#ffffff',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div
+    <div className="standalone-supplier-portal" style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Inter', sans-serif" }}>
+      {/* 1. Header Nhận diện Nam A Bank */}
+      <header style={{ background: '#003366', color: '#ffffff', borderBottom: '3px solid #d4af37', padding: '16px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: '#d4af37', color: '#003366', padding: '8px', borderRadius: '6px', display: 'flex' }}>
+              <Building size={24} />
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '0.5px' }}>
+                NAM A BANK – CỔNG ĐỐI TÁC NHÀ CUNG CẤP
+              </h1>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#cbd5e1' }}>
+                Tiếp nhận đơn đặt hàng • Xác nhận giao hàng • Quản lý vòng đời đơn PO
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', padding: '6px 14px', borderRadius: '20px', fontSize: '13px' }}>
+            <ShieldCheck size={16} color="#4ade80" />
+            <span>Liên kết xác thực bảo mật</span>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. Container Nội dung chính */}
+      <main style={{ maxWidth: '1100px', margin: '24px auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Banner Tổng quan PO & Nhà cung cấp */}
+        <div style={{ background: '#ffffff', borderRadius: '10px', padding: '20px 24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+            <div>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#0056A3', textTransform: 'uppercase' }}>
+                ĐƠN ĐẶT HÀNG CHÍNH THỨC
+              </span>
+              <h2 style={{ margin: '4px 0 6px', fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
+                PO: {po.poNumber}
+              </h2>
+              <div style={{ fontSize: '13px', color: '#475569' }}>
+                Ngày phát hành: <strong>{po.orderDate ? new Date(po.orderDate).toLocaleDateString('vi-VN') : '—'}</strong>
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 18px', minWidth: '280px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                ĐƠN VỊ CUNG CẤP HÀNG HÓA
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#003366', marginTop: '4px' }}>
+                {supplier.name}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                Mã NCC: <strong>{supplier.code}</strong> {supplier.taxCode ? `• MST: ${supplier.taxCode}` : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Trạng thái hiện tại */}
+          <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '13px' }}>
+            <div>
+              Trạng thái đơn: <strong style={{ color: isConfirmed ? '#15803d' : '#b45309' }}>
+                {isConfirmed ? '✓ Đã xác nhận đơn hàng' : '⏳ Chờ Quý Công ty xác nhận'}
+              </strong>
+            </div>
+            {confirmation?.expected_delivery_date && (
+              <div style={{ color: '#0369a1' }}>
+                Ngày dự kiến giao: <strong>{new Date(confirmation.expected_delivery_date).toLocaleDateString('vi-VN')}</strong>
+              </div>
+            )}
+            <div>
+              Trạng thái giao: <strong style={{ color: po.deliveryStatus === 'DA_GIAO_DU' ? '#15803d' : '#d97706' }}>
+                {po.deliveryStatus === 'DA_GIAO_DU' ? 'Đã giao đủ 100%' : po.deliveryStatus === 'XUAT_KHO_MOT_PHAN' ? 'Đã xuất kho một phần' : 'Chưa giao hàng'}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Bảng Danh sách hàng hóa đặt hàng (9 cột thông tin bắt buộc) */}
+        <div style={{ background: '#ffffff', borderRadius: '10px', padding: '20px 24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#003366' }}>
+              Danh Sách Hàng Hóa Thuộc Đơn Đặt Hàng ({items.length} mặt hàng)
+            </h3>
+            <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+              * Số lượng và đơn giá được quy định bởi Nam A Bank, đối tác không được chỉnh sửa.
+            </span>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', color: '#334155' }}>
+                  <th style={{ padding: '10px 8px', width: '45px', textAlign: 'center' }}>STT</th>
+                  <th style={{ padding: '10px 12px' }}>Tên Hàng Hóa / Vật Tư</th>
+                  <th style={{ padding: '10px 12px' }}>Quy Cách / Thông Số</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'center', width: '70px' }}>ĐVT</th>
+                  <th style={{ padding: '10px 10px', textAlign: 'right', width: '90px' }}>SL Đặt</th>
+                  <th style={{ padding: '10px 10px', textAlign: 'right', width: '90px', color: '#15803d' }}>Đã Giao</th>
+                  <th style={{ padding: '10px 10px', textAlign: 'right', width: '90px', color: '#b91c1c' }}>Còn Lại</th>
+                  <th style={{ padding: '10px 12px', width: '180px' }}>Đơn Vị Nhận Hàng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, idx) => (
+                  <tr key={it.id || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '10px 8px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0f172a' }}>{it.item_name || 'Hàng hóa'}</td>
+                    <td style={{ padding: '10px 12px', color: '#475569', fontSize: '12px' }}>{it.specification || '—'}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>{it.unit || 'Cái'}</td>
+                    <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700 }}>{it.orderedQty}</td>
+                    <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600, color: '#15803d' }}>{it.deliveredQty}</td>
+                    <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, color: it.remainingQty > 0 ? '#b91c1c' : '#15803d' }}>
+                      {it.remainingQty}
+                    </td>
+                    <td style={{ padding: '10px 12px', fontSize: '12px', color: '#334155' }}>
+                      {it.unit_name || 'Hội sở / Chi nhánh'}<br />
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>{it.unit_address || ''}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Thanh chuyển đổi chức năng */}
+        <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid #e2e8f0' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('confirm')}
             style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '8px',
-              background: '#FFD200',
-              color: '#1e293b',
+              padding: '10px 20px',
+              border: 'none',
+              borderBottom: activeTab === 'confirm' ? '3px solid #0056A3' : '3px solid transparent',
+              background: activeTab === 'confirm' ? '#ffffff' : 'transparent',
+              color: activeTab === 'confirm' ? '#0056A3' : '#64748b',
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+              gap: '6px',
+              borderRadius: '6px 6px 0 0'
             }}
           >
-            <Store size={26} />
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#FFD200', fontWeight: 700 }}>
-              CỔNG TÁC NGHIỆP ĐỐI TÁC • NHÀ CUNG CẤP
-            </div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '2px 0 4px' }}>
-              {supplierName}
-            </h1>
-            <p style={{ fontSize: '13px', opacity: 0.9 }}>
-              Tiếp nhận đơn hàng PO từ Nam A Bank, cập nhật lịch giao hàng và điều phối xuất kho vận chuyển.
-            </p>
-          </div>
-        </div>
+            <CheckCircle2 size={16} />
+            1. Xác Nhận Đơn Hàng & Ngày Dự Kiến Giao
+          </button>
 
-        <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 16px', borderRadius: '6px', textAlign: 'right' }}>
-          <div style={{ fontSize: '11px', opacity: 0.8 }}>Đơn hàng được phân bổ</div>
-          <div style={{ fontSize: '20px', fontWeight: 800, color: '#FFD200' }}>
-            {supplierPOs.length} <span style={{ fontSize: '13px', fontWeight: 400, color: '#ffffff' }}>PO</span>
-          </div>
-        </div>
-      </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('dispatch')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              borderBottom: activeTab === 'dispatch' ? '3px solid #0056A3' : '3px solid transparent',
+              background: activeTab === 'dispatch' ? '#ffffff' : 'transparent',
+              color: activeTab === 'dispatch' ? '#0056A3' : '#64748b',
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderRadius: '6px 6px 0 0'
+            }}
+          >
+            <Truck size={16} />
+            2. Xác Nhận Xuất Kho & Báo Giao Hàng (Nhiều Đợt)
+          </button>
 
-      {/* Banner truy cập qua link riêng NCC theo Mục D */}
-      {effectiveSupplierCode && (
-        <div style={{
-          background: '#eff6ff',
-          border: '1px solid #bfdbfe',
-          borderLeft: '4px solid #1e40af',
-          borderRadius: '6px',
-          padding: '12px 18px',
-          marginBottom: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          color: '#1e40af',
-          fontSize: '13px'
-        }}>
-          <CheckCircle2 size={20} color="#2563eb" style={{ flexShrink: 0 }} />
-          <div>
-            <strong>CỔNG TIẾP NHẬN ĐƠN HÀNG NAM A BANK:</strong> Quý Nhà cung cấp <strong>{effectiveSupplierCode}</strong> đang truy cập theo mã đơn <strong>{selectedPO?.poNumber || selectedPO?.po_number || effectivePONumber}</strong>. Dữ liệu giá và số lượng được cố định theo hồ sơ ngân hàng (chế độ chỉ xem, không chỉnh sửa).
-          </div>
-        </div>
-      )}
-
-      {/* Thông báo thành công */}
-      {successMessage && (
-        <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '13px' }}>
-            <CheckCircle2 size={18} />
-            <span>{successMessage}</span>
-          </div>
-          <button type="button" onClick={() => setSuccessMessage('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>
-            <X size={16} />
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              borderBottom: activeTab === 'history' ? '3px solid #0056A3' : '3px solid transparent',
+              background: activeTab === 'history' ? '#ffffff' : 'transparent',
+              color: activeTab === 'history' ? '#0056A3' : '#64748b',
+              fontWeight: 700,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderRadius: '6px 6px 0 0'
+            }}
+          >
+            <History size={16} />
+            3. Lịch Sử Các Đợt Giao Hàng ({deliveries.length})
           </button>
         </div>
-      )}
 
-      {/* Layout 2 cột */}
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '20px', alignItems: 'start' }}>
-        {/* Cột trái: Danh sách PO của đối tác */}
-        <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #dce4ee', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#0056A3', fontSize: '13px' }}>
-            Đơn hàng PO cần xử lý ({supplierPOs.length})
-          </div>
+        {/* TAB 1: XÁC NHẬN ĐƠN ĐẶT HÀNG & HẸN NGÀY DỰ KIẾN GIAO */}
+        {activeTab === 'confirm' && (
+          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 700, color: '#003366' }}>
+              Xác Nhận Đơn Đặt Hàng & Cập Nhật Thời Gian Dự Kiến Giao
+            </h3>
 
-          <div style={{ maxHeight: '680px', overflowY: 'auto' }}>
-            {supplierPOs.length === 0 ? (
-              <div style={{ padding: '30px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                Không có đơn hàng nào được giao cho bạn.
+            {confirmSuccessMsg && (
+              <div style={{ padding: '12px 16px', background: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', borderRadius: '6px', marginBottom: '16px', fontWeight: 600 }}>
+                {confirmSuccessMsg}
               </div>
-            ) : (
-              supplierPOs.map(po => {
-                const isSelected = selectedPO?.id === po.id;
-                const poNum = po.poNumber || po.po_number;
-                const totalAmt = po.totalAmount || po.total_amount || 0;
-                const poStat = po.po_status || 'DA_TAO_PO';
-
-                return (
-                  <div
-                    key={po.id}
-                    onClick={() => handleSelectPO(po)}
-                    style={{
-                      padding: '14px 16px',
-                      borderBottom: '1px solid #f1f5f9',
-                      cursor: 'pointer',
-                      background: isSelected ? '#eff6ff' : '#ffffff',
-                      borderLeft: isSelected ? '4px solid #1e3a8a' : '4px solid transparent',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 700, color: '#1e3a8a', fontSize: '14px' }}>
-                        {poNum}
-                      </span>
-                      <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: poStat === 'DOI_TAC_XAC_NHAN' ? '#dbeafe' : '#fef3c7', color: poStat === 'DOI_TAC_XAC_NHAN' ? '#1e40af' : '#92400e' }}>
-                        {poStat === 'DOI_TAC_XAC_NHAN' ? 'Đã nhận đơn' : 'Chờ xác nhận'}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', lineHeight: 1.3 }}>
-                      {po.title || `Cung cấp thiết bị theo đơn hàng ${poNum}`}
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                      <span>{(po.items || []).length} mục hàng</span>
-                      <strong style={{ color: '#1e3a8a', fontSize: '12px' }}>{formatCurrency(totalAmt)}</strong>
-                    </div>
-                  </div>
-                );
-              })
             )}
-          </div>
-        </div>
 
-        {/* Cột phải: Thao tác tiếp nhận, hẹn ngày và xuất kho */}
-        {selectedPO ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Header chi tiết PO & Action Bar */}
-            <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #dce4ee', padding: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #edf2f7', paddingBottom: '14px', marginBottom: '14px' }}>
+            <form onSubmit={handleConfirmOrder} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
                 <div>
-                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>
-                    HỒ SƠ PO ĐƯỢC CHỌN
-                  </div>
-                  <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#1e3a8a', margin: '2px 0' }}>
-                    {selectedPO.poNumber || selectedPO.po_number}
-                  </h2>
-                </div>
-
-                {/* 3 Nút Thao tác chính của NCC */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {/* Action 1: Xác nhận đơn */}
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={handleConfirmOrder}
-                    disabled={isLoading || selectedPO.po_status === 'DOI_TAC_XAC_NHAN'}
-                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <CheckCircle2 size={15} color="#16a34a" />
-                    {selectedPO.po_status === 'DOI_TAC_XAC_NHAN' ? 'Đã nhận đơn' : '1. Xác nhận nhận đơn'}
-                  </button>
-
-                  {/* Action 2: Hẹn ngày giao */}
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={openDateModal}
-                    disabled={isLoading}
-                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <Calendar size={15} color="#0056A3" />
-                    2. Hẹn ngày giao & Lịch sử
-                  </button>
-
-                  {/* Action 3: Báo xuất kho */}
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => setActiveTab('dispatch')}
-                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', background: '#0056A3' }}
-                  >
-                    <Truck size={15} />
-                    3. Báo xuất kho / Giao hàng
-                  </button>
-                </div>
-              </div>
-
-              {/* Thông tin đơn hàng tóm tắt */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '12px' }}>
-                <div>
-                  <span style={{ color: '#64748b' }}>Trạng thái PO:</span>
-                  <div style={{ fontWeight: 700, color: '#1e3a8a' }}>{selectedPO.po_status || 'DA_TAO_PO'}</div>
-                </div>
-                <div>
-                  <span style={{ color: '#64748b' }}>Trạng thái giao:</span>
-                  <div style={{ fontWeight: 700, color: '#ea580c' }}>{selectedPO.delivery_status || 'CHUA_GIAO'}</div>
-                </div>
-                <div>
-                  <span style={{ color: '#64748b' }}>Ngày lập:</span>
-                  <div style={{ fontWeight: 600 }}>{selectedPO.created ? new Date(selectedPO.created).toLocaleDateString('vi-VN') : '—'}</div>
-                </div>
-                <div>
-                  <span style={{ color: '#64748b' }}>Tổng giá trị:</span>
-                  <div style={{ fontWeight: 800, color: '#0056A3' }}>{formatCurrency(selectedPO.totalAmount || selectedPO.total_amount || 0)}</div>
-                </div>
-              </div>
-
-              {/* Ô NHẬP TRỰC TIẾP THỜI GIAN DỰ KIẾN GIAO HÀNG (MỤC D) */}
-              <div style={{
-                marginTop: '16px',
-                paddingTop: '14px',
-                borderTop: '1px dashed #cbd5e1',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                flexWrap: 'wrap',
-                background: '#f8fafc',
-                padding: '12px 14px',
-                borderRadius: '6px'
-              }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#0056A3', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Calendar size={16} />
-                  THỜI GIAN DỰ KIẾN GIAO HÀNG:
-                </span>
-                <input
-                  type="date"
-                  value={directExpectedDate}
-                  onChange={(e) => setDirectExpectedDate(e.target.value)}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '13px',
-                    borderRadius: '5px',
-                    border: '1.5px solid #0056A3',
-                    fontWeight: 600,
-                    color: '#0056A3'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleQuickSaveExpectedDate}
-                  disabled={isLoading || !directExpectedDate}
-                  className="btn-primary"
-                  style={{
-                    padding: '7px 16px',
-                    fontSize: '12.5px',
-                    background: '#0056A3',
-                    borderColor: '#0056A3',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Check size={14} />
-                  Cập nhật thời gian giao
-                </button>
-                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-                  (NCC cập nhật để Nam A Bank theo dõi tiến độ giao hàng)
-                </span>
-              </div>
-            </div>
-
-            {/* Chuyển đổi giữa Xem danh mục hàng & Báo xuất kho */}
-            {activeTab === 'dispatch' ? (
-              /* FORM BÁO XUẤT KHO / GIAO NHIỀU ĐỢT */
-              <div style={{ background: '#ffffff', borderRadius: '8px', border: '2px solid #0056A3', padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0056A3', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Truck size={18} />
-                    <span>Lập Phiếu Xuất Kho & Điều Phối Giao Hàng (Hỗ trợ nhiều đợt)</span>
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('list')}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '12px' }}
-                  >
-                    Quay lại danh mục
-                  </button>
-                </div>
-
-                <form onSubmit={handleDispatchDelivery}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                        Ngày giao hàng thực tế:
-                      </label>
-                      <input
-                        type="date"
-                        className="form-control"
-                        value={actualDeliveryDate}
-                        onChange={(e) => setActualDeliveryDate(e.target.value)}
-                        required
-                        style={{ fontSize: '13px', height: '36px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                        Đơn vị vận chuyển / Người giao:
-                      </label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Vd: Viettel Post / Anh Hùng"
-                        value={transporterName}
-                        onChange={(e) => setTransporterName(e.target.value)}
-                        required
-                        style={{ fontSize: '13px', height: '36px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                        Số điện thoại người giao:
-                      </label>
-                      <input
-                        type="tel"
-                        className="form-control"
-                        placeholder="Vd: 0988.xxx.xxx"
-                        value={transporterPhone}
-                        onChange={(e) => setTransporterPhone(e.target.value)}
-                        required
-                        style={{ fontSize: '13px', height: '36px' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Bảng phân bổ số lượng giao cho từng món trong đợt này */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '8px' }}>
-                      Phân bổ số lượng giao đợt này (cho phép giao một phần / nhiều đợt):
-                    </div>
-
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', border: '1px solid #e2e8f0' }}>
-                      <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <tr>
-                          <th style={{ padding: '8px 10px', textAlign: 'center', width: '40px' }}>STT</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Tên hàng hóa & Quy cách</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center', width: '90px' }}>Tổng SL Đặt</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center', width: '130px' }}>SL Xuất Giao Đợt Này</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dispatchItems.map((item, idx) => (
-                          <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
-                            <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1e293b' }}>
-                              {item.name}
-                              {item.spec && <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>{item.spec}</div>}
-                            </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600 }}>
-                              {item.qty}
-                            </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                              <input
-                                type="number"
-                                min="0"
-                                max={item.qty}
-                                value={item.dispatched_qty}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value) || 0;
-                                  setDispatchItems(prev => prev.map((it, i) => i === idx ? { ...it, dispatched_qty: val } : it));
-                                }}
-                                style={{
-                                  width: '90px',
-                                  padding: '4px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #0056A3',
-                                  textAlign: 'center',
-                                  fontWeight: 700,
-                                  color: '#0056A3'
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                      Ghi chú đợt giao & Số phiếu xuất kho / Vận đơn đính kèm:
-                    </label>
-                    <textarea
-                      rows={2}
-                      className="form-control"
-                      value={deliveryNotes}
-                      onChange={(e) => setDeliveryNotes(e.target.value)}
-                      placeholder="Ghi chú số phiếu xuất kho, thông tin ký nhận..."
-                      style={{ fontSize: '12px' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setActiveTab('list')}
-                    >
-                      Hủy bỏ
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="btn-primary"
-                      disabled={isLoading}
-                      style={{ background: '#0056A3', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <Send size={15} />
-                      {isLoading ? 'Đang cập nhật...' : 'Xác nhận Xuất kho & Giao hàng'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            ) : (
-              /* BẢNG KÊ HÀNG HÓA THÔNG THƯỜNG */
-              <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #dce4ee', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#0056A3' }}>
-                    Danh mục mặt hàng của Quý NCC trong đơn hàng ({dispatchItems.length} món)
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>
-                    Chế độ bảo mật: Chỉ hiển thị hàng hóa thuộc phạm vi cung cấp của Quý NCC
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Thời gian dự kiến giao hàng <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={expectedDate}
+                    onChange={(e) => setExpectedDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Nhập ngày Quý Công ty dự kiến bàn giao hàng hóa tại các địa điểm nhận
                   </span>
                 </div>
 
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <tr>
-                        <th style={{ padding: '8px 12px', textAlign: 'center', width: '40px' }}>STT</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>Tên hàng hóa & Quy cách</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>Đơn vị thụ hưởng</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center', width: '70px' }}>SL</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'right', width: '110px' }}>Đơn giá</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'right', width: '130px' }}>Thành tiền</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dispatchItems.map((item, idx) => (
-                        <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '8px 12px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
-                          <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1e293b' }}>
-                            {item.name}
-                            {item.spec && <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>{item.spec}</div>}
-                          </td>
-                          <td style={{ padding: '8px 12px', color: '#0056A3', fontWeight: 500 }}>
-                            {item.unit || 'Hội sở'}
-                          </td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>
-                            {item.qty}
-                          </td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b' }}>
-                            {formatNumber(item.price || 0)}
-                          </td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#0056A3' }}>
-                            {formatCurrency(item.amount || (Number(item.qty) * Number(item.price)) || 0)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Người đại diện xác nhận (Họ tên / Chức danh)
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmedByName}
+                    onChange={(e) => setConfirmedByName(e.target.value)}
+                    placeholder={`Ví dụ: Nguyễn Văn A - Đại diện ${supplier.name}`}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
                 </div>
               </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #dce4ee', padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-            Vui lòng chọn đơn hàng PO bên trái để thao tác.
-          </div>
-        )}
-      </div>
 
-      {/* MODAL HẸN NGÀY GIAO & XEM LỊCH SỬ THAY ĐỔI */}
-      {showDateModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px'
-          }}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '10px',
-              width: '650px',
-              maxWidth: '95vw',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              overflow: 'hidden'
-            }}
-          >
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#0056A3' }}>
-                <Calendar size={18} />
-                <span>Hẹn Ngày Giao Hàng & Lịch Sử Thay Đổi ({selectedPO?.poNumber || selectedPO?.po_number})</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDateModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveExpectedDate} style={{ padding: '18px' }}>
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                  Ngày dự kiến giao mới:
-                </label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={newExpectedDate}
-                  onChange={(e) => setNewExpectedDate(e.target.value)}
-                  required
-                  style={{ fontSize: '13px', height: '36px' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                  Lý do thay đổi / cam kết tiến độ:
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Ghi chú hoặc cam kết tiến độ giao hàng (nếu có)
                 </label>
                 <textarea
-                  rows={2}
-                  className="form-control"
-                  placeholder="Vd: Nhà máy sản xuất hoàn tất sớm, hoặc xin dời 1 ngày do thời tiết..."
-                  value={dateChangeReason}
-                  onChange={(e) => setDateChangeReason(e.target.value)}
-                  required
-                  style={{ fontSize: '12px' }}
+                  rows={3}
+                  value={confirmNote}
+                  onChange={(e) => setConfirmNote(e.target.value)}
+                  placeholder="Nhập ghi chú hoặc thông tin bổ sung gửi cho Nam A Bank..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
                 />
               </div>
 
-              {/* LỊCH SỬ THAY ĐỔI NGÀY GIAO (AI SỬA, LÚC NÀO, TỪ NGÀY NÀO SANG NGÀY NÀO) */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                  <History size={14} color="#0056A3" />
-                  <span>Lịch sử các lần thay đổi ngày giao ({dateHistory.length})</span>
-                </div>
-
-                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
-                  {loadingHistory ? (
-                    <div style={{ padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
-                      Đang tải lịch sử...
-                    </div>
-                  ) : dateHistory.length === 0 ? (
-                    <div style={{ padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
-                      Chưa có lịch sử thay đổi ngày giao nào trước đây
-                    </div>
-                  ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                      <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <tr>
-                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Người sửa</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>Từ ngày</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>Sang ngày</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Lý do</th>
-                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Thời gian</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dateHistory.map((h, i) => (
-                          <tr key={h.id || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '6px 8px', fontWeight: 600 }}>{h.changed_by_name || 'NCC'}</td>
-                            <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b' }}>
-                              {h.old_date ? new Date(h.old_date).toLocaleDateString('vi-VN') : '—'}
-                            </td>
-                            <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#0056A3' }}>
-                              {h.new_date ? new Date(h.new_date).toLocaleDateString('vi-VN') : '—'}
-                            </td>
-                            <td style={{ padding: '6px 8px', color: '#334155' }}>{h.reason || '—'}</td>
-                            <td style={{ padding: '6px 8px', color: '#94a3b8' }}>
-                              {h.created_at ? new Date(h.created_at).toLocaleString('vi-VN') : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowDateModal(false)}
-                >
-                  Đóng
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
                 <button
                   type="submit"
-                  className="btn-primary"
-                  disabled={isLoading}
-                  style={{ background: '#0056A3' }}
+                  disabled={isSubmittingConfirm}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#0056A3',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
                 >
-                  {isLoading ? 'Đang lưu...' : 'Lưu ngày hẹn mới'}
+                  <CheckCircle2 size={16} />
+                  {isSubmittingConfirm ? 'Đang xử lý...' : isConfirmed ? 'Cập Nhật Lại Ngày Dự Kiến' : 'Xác Nhận Đồng Ý Đặt Hàng'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* TAB 2: XÁC NHẬN XUẤT KHO & GIAO HÀNG (HỖ TRỢ NHIỀU ĐỢT) */}
+        {activeTab === 'dispatch' && (
+          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: '#003366' }}>
+              Xác Nhận Xuất Kho & Khởi Tạo Đợt Giao Hàng
+            </h3>
+            <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>
+              Hệ thống hỗ trợ giao nhiều đợt. Quý Công ty nhập số lượng thực tế giao đợt này cho từng mặt hàng bên dưới.
+            </p>
+
+            {dispatchSuccessMsg && (
+              <div style={{ padding: '12px 16px', background: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', borderRadius: '6px', marginBottom: '16px', fontWeight: 600 }}>
+                {dispatchSuccessMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleDispatchDelivery} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* Bảng nhập số lượng giao đợt này */}
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+                      <th style={{ padding: '8px 10px', width: '40px', textAlign: 'center' }}>STT</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'left' }}>Tên Mặt Hàng</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', width: '90px' }}>Tổng Đặt</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', width: '90px', color: '#15803d' }}>Đã Giao</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', width: '90px', color: '#b91c1c' }}>Còn Lại</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', width: '140px', background: '#eff6ff', color: '#1d4ed8' }}>
+                        SL Xuất Kho Đợt Này
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => (
+                      <tr key={it.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{it.item_name}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right' }}>{it.orderedQty}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#15803d', fontWeight: 600 }}>{it.deliveredQty}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#b91c1c', fontWeight: 700 }}>{it.remainingQty}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'center', background: '#eff6ff' }}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={it.remainingQty}
+                            value={dispatchItemQtys[it.id] ?? 0}
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(it.remainingQty, Number(e.target.value)));
+                              setDispatchItemQtys(prev => ({ ...prev, [it.id]: val }));
+                            }}
+                            style={{
+                              width: '80px',
+                              padding: '6px 8px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              border: '1px solid #93c5fd',
+                              borderRadius: '4px'
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Thông tin vận chuyển */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Ngày xuất kho / Ngày giao hàng thực tế <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={dispatchedAt}
+                    onChange={(e) => setDispatchedAt(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Đơn vị vận chuyển (Carrier)
+                  </label>
+                  <input
+                    type="text"
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    placeholder="Ví dụ: Đội xe FTI / Viettel Post / GHN"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Mã vận đơn / Số phiếu xuất kho
+                  </label>
+                  <input
+                    type="text"
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder="Ví dụ: PXK-2026-001 hoặc Mã bưu gửi"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Người xác nhận xuất kho
+                  </label>
+                  <input
+                    type="text"
+                    value={dispatcherName}
+                    onChange={(e) => setDispatcherName(e.target.value)}
+                    placeholder="Họ tên thủ kho / cán bộ giao vận"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Ghi chú đợt giao hàng
+                </label>
+                <textarea
+                  rows={2}
+                  value={deliveryNote}
+                  onChange={(e) => setDeliveryNote(e.target.value)}
+                  placeholder="Ghi chú đính kèm chứng từ hoặc liên hệ tài xế..."
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDispatch}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#15803d',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Truck size={16} />
+                  {isSubmittingDispatch ? 'Đang lưu...' : 'Xác Nhận Xuất Kho / Giao Hàng Đợt Này'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* TAB 3: LỊCH SỬ CÁC ĐỢT GIAO HÀNG */}
+        {activeTab === 'history' && (
+          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 700, color: '#003366' }}>
+              Lịch Sử Các Đợt Giao Hàng Của Nhà Cung Cấp ({deliveries.length} đợt)
+            </h3>
+
+            {deliveries.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+                Chưa có đợt giao hàng nào được ghi nhận. Vui lòng chuyển sang Tab 2 để báo xuất kho.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {deliveries.map((deliv, idx) => (
+                  <div key={deliv.id || idx} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>
+                          Đợt {deliveries.length - idx}: {deliv.delivery_code}
+                        </span>
+                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: '#dcfce7', color: '#15803d' }}>
+                          {deliv.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        Ngày giao: <strong>{deliv.delivery_date ? new Date(deliv.delivery_date).toLocaleDateString('vi-VN') : '—'}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: '#475569', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      {deliv.carrier && <span>Đơn vị vận chuyển: <strong>{deliv.carrier}</strong></span>}
+                      {deliv.tracking_number && <span>Mã vận đơn: <strong>{deliv.tracking_number}</strong></span>}
+                      {deliv.confirmed_by && <span>Người xác nhận: <strong>{deliv.confirmed_by}</strong></span>}
+                    </div>
+
+                    {deliv.delivery_note && (
+                      <div style={{ marginTop: '8px', fontSize: '12px', color: '#334155', fontStyle: 'italic', background: '#ffffff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                        "{deliv.delivery_note}"
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Footer bảo mật */}
+      <footer style={{ marginTop: '40px', padding: '20px', textAlign: 'center', fontSize: '12px', color: '#94a3b8', borderTop: '1px solid #e2e8f0' }}>
+        © 2026 Ngân Hàng TMCP Nam Á (Nam A Bank). Hệ thống Quản trị Tài sản & Mua sắm nội bộ.
+      </footer>
     </div>
   );
 }
+
+export default SupplierPortalPage;

@@ -20,6 +20,7 @@ import lifecycleRoutes from './routes/lifecycleRoutes.js';
 import deliveryRoutes from './routes/deliveryRoutes.js';
 import approvalRoutes from './routes/approvalRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import supplierInvitationRoutes from './routes/supplierInvitationRoutes.js';
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.use('/api/lifecycles', lifecycleRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api', supplierInvitationRoutes);
 
 // Error handling tập trung
 app.use(errorHandler);
