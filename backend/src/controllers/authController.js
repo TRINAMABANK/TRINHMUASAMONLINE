@@ -3,7 +3,8 @@ import { logAudit } from '../middlewares/errorHandler.js';
 
 export async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
+    const email = (req.body.email || req.body.username || '').trim();
+    const { password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Vui lòng cung cấp email và mật khẩu.' });
     }
