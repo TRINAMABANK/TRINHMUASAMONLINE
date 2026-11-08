@@ -20,15 +20,23 @@ export async function generateInvitation({ poId, supplierId, recipientEmail, cur
     throw err;
   }
 
-  // 2. Kiểm tra Nhà cung cấp
-  const supplier = await queryOne(`SELECT * FROM suppliers WHERE id = $1 AND deleted_at IS NULL`, [supplierId]);
+  // 2. Xác định supplierId (nếu thiếu hoặc UNKNOWN, lấy từ PO)
+  const targetSupplierId = (supplierId && supplierId !== 'UNKNOWN') ? supplierId : po.supplier_id;
+  if (!targetSupplierId) {
+    const err = new Error('Không xác định được nhà cung cấp.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // 3. Kiểm tra Nhà cung cấp
+  const supplier = await queryOne(`SELECT * FROM suppliers WHERE id = $1 AND deleted_at IS NULL`, [targetSupplierId]);
   if (!supplier) {
     const err = new Error('Không tìm thấy nhà cung cấp.');
     err.statusCode = 404;
     throw err;
   }
 
-  // 3. Lấy email người nhận
+  // 4. Lấy email người nhận
   const emailToUse = (recipientEmail || supplier.email || '').trim();
   if (!emailToUse) {
     const err = new Error('Vui lòng cung cấp email người nhận của nhà cung cấp.');
@@ -36,25 +44,25 @@ export async function generateInvitation({ poId, supplierId, recipientEmail, cur
     throw err;
   }
 
-  // 4. Sinh token ngẫu nhiên bảo mật 32 bytes (256-bit entropy)
+  // 5. Sinh token ngẫu nhiên bảo mật 32 bytes (256-bit entropy)
   const rawToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Hiệu lực 30 ngày
   const invitationId = crypto.randomUUID();
 
-  // 5. Thu hồi bất kỳ token cũ nào còn hiệu lực của cặp (PO, Supplier) này để tạo link mới
+  // 6. Thu hồi bất kỳ token cũ nào còn hiệu lực của cặp (PO, Supplier) này để tạo link mới
   await query(
     `UPDATE supplier_order_invitations 
      SET revoked_at = CURRENT_TIMESTAMP 
      WHERE purchase_order_id = $1 AND supplier_id = $2 AND revoked_at IS NULL`,
-    [poId, supplierId]
+    [poId, targetSupplierId]
   );
 
-  // 6. Lưu invitation mới
+  // 7. Lưu invitation mới
   await query(
     `INSERT INTO supplier_order_invitations (id, supplier_id, purchase_order_id, recipient_email, token_hash, expires_at, status, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, 'EMAIL_DRAFT_CREATED', $7)`,
-    [invitationId, supplierId, poId, emailToUse, tokenHash, expiresAt, currentUser?.id || null]
+    [invitationId, targetSupplierId, poId, emailToUse, tokenHash, expiresAt, currentUser?.id || null]
   );
 
   // 7. Tạo URL riêng gắn liền với token
@@ -244,9 +252,11 @@ export async function getPoSupplierManagement(poId) {
   const po = await queryOne(`SELECT * FROM purchase_orders WHERE id = $1 AND deleted_at IS NULL`, [poId]);
   if (!po) return null;
 
+  const allSuppliers = await query(`SELECT * FROM suppliers WHERE deleted_at IS NULL`);
+
   // 2. Lấy tất cả items của PO để xác định các nhà cung cấp có trong PO
   const items = await query(
-    `SELECT poi.*, s.id as supplier_id, s.name as supplier_name, s.code as supplier_code, s.email as supplier_email, s.phone as supplier_phone
+    `SELECT poi.*, s.id as joined_supplier_id, s.name as joined_supplier_name, s.code as joined_supplier_code, s.email as joined_supplier_email, s.phone as joined_supplier_phone
      FROM purchase_order_items poi
      LEFT JOIN suppliers s ON s.id = poi.supplier_id OR LOWER(s.name) = LOWER(poi.supplier_name) OR LOWER(s.code) = LOWER(poi.supplier_name)
      WHERE poi.po_id = $1`,
@@ -256,14 +266,27 @@ export async function getPoSupplierManagement(poId) {
   // Tập hợp danh sách các nhà cung cấp duy nhất
   const supplierMap = new Map();
   for (const it of items) {
-    const sId = it.supplier_id || it.supplier_code || it.supplier_name || 'UNKNOWN';
+    let s = null;
+    const targetSupId = it.joined_supplier_id || it.supplier_id || po.supplier_id;
+    if (targetSupId) {
+      s = allSuppliers.find(sup => sup.id === targetSupId);
+    }
+    if (!s && (it.supplier_name || it.supplier)) {
+      const sName = (it.supplier_name || it.supplier || '').toLowerCase().trim();
+      s = allSuppliers.find(sup => sup.code.toLowerCase() === sName || sup.name.toLowerCase() === sName || sup.name.toLowerCase().includes(sName));
+    }
+    if (!s && po.supplier_id) {
+      s = allSuppliers.find(sup => sup.id === po.supplier_id);
+    }
+
+    const sId = s?.id || po.supplier_id || it.supplier_id || 'UNKNOWN';
     if (!supplierMap.has(sId)) {
       supplierMap.set(sId, {
-        supplierId: it.supplier_id,
-        supplierCode: it.supplier_code || 'NCC',
-        supplierName: it.supplier_name || 'Nhà cung cấp',
-        supplierEmail: it.supplier_email || '',
-        supplierPhone: it.supplier_phone || '',
+        supplierId: s?.id || po.supplier_id || it.supplier_id || null,
+        supplierCode: s?.code || it.joined_supplier_code || 'NCC',
+        supplierName: s?.name || po.supplier_name || it.joined_supplier_name || it.supplier_name || 'Nhà cung cấp',
+        supplierEmail: s?.email || it.joined_supplier_email || '',
+        supplierPhone: s?.phone || it.joined_supplier_phone || '',
         itemCount: 0,
         totalQty: 0,
         totalAmount: 0
@@ -273,6 +296,21 @@ export async function getPoSupplierManagement(poId) {
     sObj.itemCount += 1;
     sObj.totalQty += Number(it.quantity || it.qty || 1);
     sObj.totalAmount += Number(it.total_price || it.amount || (Number(it.unit_price || it.price || 0) * Number(it.quantity || it.qty || 1)));
+  }
+
+  // Nếu không có item nào nhưng PO có supplier_id
+  if (supplierMap.size === 0 && po.supplier_id) {
+    const s = allSuppliers.find(sup => sup.id === po.supplier_id);
+    supplierMap.set(po.supplier_id, {
+      supplierId: po.supplier_id,
+      supplierCode: s?.code || 'NCC',
+      supplierName: s?.name || po.supplier_name || 'Nhà cung cấp',
+      supplierEmail: s?.email || '',
+      supplierPhone: s?.phone || '',
+      itemCount: items.length,
+      totalQty: items.reduce((sum, it) => sum + Number(it.quantity || it.qty || 1), 0),
+      totalAmount: Number(po.total_amount || 0)
+    });
   }
 
   // 3. Lấy các invitations mới nhất cho PO này
@@ -415,7 +453,12 @@ export async function verifyAndGetPortalData(rawToken) {
      FROM purchase_order_items poi
      LEFT JOIN departments d ON d.id = poi.department_id
      WHERE poi.po_id = $1 
-       AND (poi.supplier_id = $2 OR LOWER(poi.supplier_name) = LOWER($3) OR LOWER(poi.supplier_name) = LOWER($4))
+       AND (
+         poi.supplier_id = $2 
+         OR LOWER(poi.supplier_name) = LOWER($3) 
+         OR LOWER(poi.supplier_name) = LOWER($4)
+         OR (poi.supplier_id IS NULL AND (poi.supplier_name IS NULL OR poi.supplier_name = ''))
+       )
      ORDER BY poi.stt ASC`,
     [inv.purchase_order_id, inv.supplier_id, inv.supplier_name, inv.supplier_code]
   );

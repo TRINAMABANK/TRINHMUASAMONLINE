@@ -504,6 +504,12 @@ async function createSchemaTables(db) {
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_confirmed_at TIMESTAMP WITH TIME ZONE;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE;
 
+    -- Đồng bộ supplier_id từ PO sang purchase_order_items nếu chưa có
+    UPDATE purchase_order_items poi
+    SET supplier_id = po.supplier_id, supplier_name = po.supplier_name
+    FROM purchase_orders po
+    WHERE poi.po_id = po.id AND poi.supplier_id IS NULL AND po.supplier_id IS NOT NULL;
+
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS po_id TEXT;
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS object_type TEXT;
     ALTER TABLE lifecycle_events ADD COLUMN IF NOT EXISTS object_id TEXT;
