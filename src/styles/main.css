@@ -1619,3 +1619,806 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   THIẾT KẾ MỚI: BATCH ACTION TOOLBAR & SUMMARY CARDS (ACCEPT MỘT LẦN)
+   ========================================================================== */
+
+/* 1. Thanh công cụ cố định thao tác hàng loạt (Khớp 100% ảnh giao diện) */
+.batch-toolbar-sticky {
+  position: sticky;
+  bottom: 12px;
+  z-index: 80;
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+
+.batch-toolbar-panel {
+  background: #ffffff;
+  border: 1.5px solid var(--brand-primary);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 86, 163, 0.14);
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Hàng trên: Thống kê + Chọn loại thanh toán + Nút ACCEPT */
+.toolbar-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.toolbar-stats-segment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.stat-text {
+  color: #334155;
+}
+
+.stat-count-highlight {
+  color: var(--brand-primary);
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.stat-amount-highlight {
+  color: #0284c7;
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.stat-pipe {
+  color: #cbd5e1;
+  font-weight: 300;
+}
+
+/* Khu vực chọn loại thanh toán */
+.toolbar-payment-choice-segment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.choice-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.btn-choice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-choice-toggle:hover {
+  background: #f0f9ff;
+  border-color: #0284c7;
+}
+
+.btn-choice-toggle.active-ho {
+  background: var(--brand-primary);
+  color: #ffffff;
+  border-color: var(--brand-primary);
+  box-shadow: 0 2px 8px rgba(0, 86, 163, 0.35);
+}
+
+.btn-choice-toggle.active-dv {
+  background: #d97706;
+  color: #ffffff;
+  border-color: #d97706;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
+}
+
+/* Nút ACCEPT chính */
+.btn-accept-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 24px;
+  background: var(--brand-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(0, 86, 163, 0.35);
+  transition: all 0.18s ease;
+}
+
+.btn-accept-main:hover {
+  background: #004482;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px rgba(0, 86, 163, 0.45);
+}
+
+.btn-accept-main:active {
+  transform: translateY(0);
+}
+
+/* Hàng dưới: Các nút nhanh */
+.toolbar-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.toolbar-quick-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-quick-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-sub:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: var(--brand-primary);
+}
+
+.btn-quick-sub.btn-quick-reset {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.btn-quick-sub.btn-quick-reset:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.toolbar-distribution-hint {
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.toolbar-distribution-hint .text-ho {
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+
+.toolbar-distribution-hint .text-dv {
+  color: #d97706;
+  font-weight: 700;
+}
+
+/* 2. Group Summary Cards (Khu vực Hội sở & Đơn vị sau ACCEPT) */
+.group-summary-wrapper {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.group-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.summary-title-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.summary-title-area .title-icon {
+  color: var(--brand-primary);
+}
+
+.summary-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.summary-subtitle {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.quick-filter-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  background: #eff6ff;
+  color: var(--brand-primary);
+}
+
+.tab-btn.active {
+  background: var(--brand-primary);
+  color: #ffffff;
+  border-color: var(--brand-primary);
+}
+
+.tab-btn.tab-ho.active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+.tab-btn.tab-dv.active {
+  background: #d97706;
+  border-color: #d97706;
+  color: #ffffff;
+}
+
+.group-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .group-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.group-card {
+  border-radius: 10px;
+  padding: 16px;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.group-card.card-ho {
+  border-left: 5px solid #0284c7;
+  background: #f8fbfe;
+}
+
+.group-card.card-dv {
+  border-left: 5px solid #d97706;
+  background: #fefdfa;
+}
+
+.group-card.card-active {
+  box-shadow: 0 0 0 2px var(--brand-primary);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.card-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.group-pill.pill-ho {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.group-pill.pill-dv {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.group-code {
+  font-size: 11px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.btn-card-reset {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.btn-card-reset:hover {
+  background: #fee2e2;
+}
+
+.card-metrics {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #334155;
+  padding: 2px 0;
+}
+
+.metric-row.amount-row {
+  border-top: 1px dashed #cbd5e1;
+  margin-top: 6px;
+  padding-top: 8px;
+  font-weight: 700;
+}
+
+.metric-amount {
+  font-size: 15px;
+  color: var(--brand-primary);
+}
+
+.card-footer {
+  margin-top: 12px;
+}
+
+.btn-card-view {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-card-view:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: var(--brand-primary);
+}
+
+.unassigned-notice-bar {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #9a3412;
+}
+
+.notice-icon {
+  flex-shrink: 0;
+  color: #ea580c;
+}
+
+.notice-text {
+  flex: 1;
+}
+
+.btn-notice-filter {
+  background: #ffffff;
+  border: 1px solid #fdba74;
+  color: #c2410c;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-notice-filter:hover {
+  background: #ffedd5;
+}
+
+/* 3. Table badges & inline actions */
+.table-badge-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-payment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-payment.badge-ho {
+  background: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+}
+
+.badge-payment.badge-dv {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.badge-payment.badge-unassigned {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+}
+
+.btn-unassign-inline {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: none;
+  background: #fee2e2;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.btn-unassign-inline:hover {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+/* 4. PO summary pills */
+.po-summary-pill-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.po-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.po-summary-pill.pill-ho {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.po-summary-pill.pill-dv {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+/* ==========================================================================
+   KHU VỰC XÁC NHẬN VÀ XUẤT 01 FILE EXCEL ĐẶT TẠI CUỐI TRANG
+   ========================================================================== */
+.export-confirmation-wrapper {
+  margin-top: 28px;
+  margin-bottom: 36px;
+  position: sticky;
+  bottom: 12px;
+  z-index: 85;
+}
+
+.export-confirmation-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  transition: all 0.25s ease;
+}
+
+/* Trạng thái SẴN SÀNG: Màu xanh lá */
+.export-confirmation-card.state-ready {
+  border: 2px solid #10b981;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+  box-shadow: 0 8px 30px rgba(16, 185, 129, 0.15);
+}
+
+/* Trạng thái CHƯA HOÀN TẤT: Màu vàng / cam */
+.export-confirmation-card.state-pending {
+  border: 2px solid #f59e0b;
+  background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
+  box-shadow: 0 8px 30px rgba(245, 158, 11, 0.12);
+}
+
+.confirmation-status-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-badge-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-header-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.status-pill.pill-ready {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.status-pill.pill-pending {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.status-count-tag {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-details-text {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.status-main-msg {
+  margin: 0 0 4px 0;
+  font-size: 13.5px;
+  color: #0f172a;
+}
+
+.status-groups-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.group-stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.group-stat-sep {
+  color: #cbd5e1;
+}
+
+.pending-warning-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b45309;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.pending-instruction {
+  margin: 0;
+  font-size: 12.5px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.pending-error-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+/* Cột hành động & Nút xuất */
+.confirmation-action-col {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.total-amount-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.total-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.total-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.total-subtext {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.btn-export-final {
+  padding: 12px 24px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  min-width: 260px;
+  text-align: left;
+}
+
+.btn-export-final.btn-ready {
+  background: var(--brand-primary);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 86, 163, 0.3);
+}
+
+.btn-export-final.btn-ready:hover {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 86, 163, 0.4);
+}
+
+.btn-export-final.btn-ready:active {
+  transform: translateY(0);
+}
+
+.btn-export-final.btn-disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.btn-text-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-main-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+}
+
+.btn-sub-title {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+@media (max-width: 1024px) {
+  .export-confirmation-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .confirmation-action-col {
+    justify-content: space-between;
+  }
+}
+

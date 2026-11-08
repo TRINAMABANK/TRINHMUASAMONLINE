@@ -83,11 +83,62 @@ export function useExcelImport() {
         amount: 0,
         purpose: '',
         msp: '',
-        payGroup: 'A',
-        selected: true,
+        payGroup: null,
+        selected: false,
         ...defaultValues
       };
       return [...prevRows, newRow];
+    });
+  }, [pushHistory]);
+
+  // Phân loại hàng loạt các dòng được chọn vào nhóm thanh toán
+  const classifyRows = useCallback((paymentType, rowIds = null) => {
+    setRows(prevRows => {
+      pushHistory(prevRows);
+      return prevRows.map(row => {
+        const isTarget = rowIds ? rowIds.includes(row.id) : row.selected === true;
+        if (isTarget) {
+          return {
+            ...row,
+            payGroup: paymentType,
+            selected: false // Tự động bỏ tick sau khi đã ACCEPT thành công
+          };
+        }
+        return row;
+      });
+    });
+  }, [pushHistory]);
+
+  // Hủy phân loại cho các dòng chỉ định
+  const unclassifyRows = useCallback((rowIds) => {
+    setRows(prevRows => {
+      pushHistory(prevRows);
+      const targetIds = Array.isArray(rowIds) ? rowIds : [rowIds];
+      return prevRows.map(row => {
+        if (targetIds.includes(row.id)) {
+          return {
+            ...row,
+            payGroup: null
+          };
+        }
+        return row;
+      });
+    });
+  }, [pushHistory]);
+
+  // Hủy phân loại toàn bộ cho một nhóm (HOI_SO hoặc DON_VI)
+  const unclassifyGroup = useCallback((groupType) => {
+    setRows(prevRows => {
+      pushHistory(prevRows);
+      return prevRows.map(row => {
+        if (row.payGroup === groupType) {
+          return {
+            ...row,
+            payGroup: null
+          };
+        }
+        return row;
+      });
     });
   }, [pushHistory]);
 
@@ -154,6 +205,9 @@ export function useExcelImport() {
     addRow,
     deleteRow,
     duplicateRow,
+    classifyRows,
+    unclassifyRows,
+    unclassifyGroup,
     undo,
     clearData
   };

@@ -1,6 +1,11 @@
 import React from 'react';
-import { PAY_GROUPS } from '../utils/constants.js';
-import { PlusCircle, RotateCcw, FileSpreadsheet, CheckCircle, ShieldAlert } from 'lucide-react';
+import { formatCurrency } from '../utils/currencyUtils.js';
+import {
+  PlusCircle,
+  RotateCcw,
+  Landmark,
+  Building2
+} from 'lucide-react';
 
 export function POToolbar({
   poNumber,
@@ -9,28 +14,32 @@ export function POToolbar({
   onDateChange,
   requester,
   onRequesterChange,
-  payGroup,
-  onPayGroupChange,
   note,
   onNoteChange,
-  selectedCount,
+  countHO = 0,
+  amountHO = 0,
+  countDV = 0,
+  amountDV = 0,
   canUndo,
   onUndo,
-  onAddRow,
-  onCreatePO,
-  isExporting
+  onAddRow
 }) {
   return (
     <div className="po-toolbar-card">
       <div className="po-toolbar-header">
-        <h3 className="toolbar-title">Thiết lập Hồ sơ PO & Xuất 01 File Excel (Gồm 02 Sheet)</h3>
+        <div>
+          <h3 className="toolbar-title">Thiết lập Thông tin Hồ sơ PO</h3>
+          <p className="toolbar-desc">
+            Nhập số hiệu PO, ngày lập, người đề xuất và trích yếu hồ sơ mua sắm
+          </p>
+        </div>
         <div className="toolbar-controls">
           <button
             type="button"
             className="btn-toolbar-sec"
             onClick={onUndo}
             disabled={!canUndo}
-            title="Khôi phục lại thay đổi trước đó"
+            title="Khôi phục lại thay đổi trước đó (Undo)"
           >
             <RotateCcw size={16} />
             Hoàn tác (Undo)
@@ -87,18 +96,17 @@ export function POToolbar({
         </div>
 
         <div className="form-group">
-          <label className="form-label">Cấu hình nhóm thanh toán mặc định</label>
-          <select
-            className="form-select"
-            value={payGroup}
-            onChange={(e) => onPayGroupChange(e.target.value)}
-          >
-            {PAY_GROUPS.map((pg) => (
-              <option key={pg.id} value={pg.id}>
-                {pg.name}
-              </option>
-            ))}
-          </select>
+          <label className="form-label">Tóm tắt cấu trúc hồ sơ</label>
+          <div className="po-summary-pill-group">
+            <span className="po-summary-pill pill-ho" title="Nhóm Hội sở thanh toán">
+              <Landmark size={13} />
+              <b>{countHO}</b> dòng ({formatCurrency(amountHO)})
+            </span>
+            <span className="po-summary-pill pill-dv" title="Nhóm Đơn vị thanh toán">
+              <Building2 size={13} />
+              <b>{countDV}</b> dòng ({formatCurrency(amountDV)})
+            </span>
+          </div>
         </div>
 
         <div className="form-group full-width">
@@ -111,33 +119,6 @@ export function POToolbar({
             placeholder="Ví dụ: Trang bị tài sản định kỳ cho các chi nhánh quý 4/2026..."
           />
         </div>
-      </div>
-
-      <div className="po-toolbar-footer">
-        {selectedCount === 0 ? (
-          <div className="toolbar-notice text-warning">
-            <ShieldAlert size={18} />
-            <span>Vui lòng tick chọn ít nhất 1 dòng trong bảng bên dưới để tạo PO và xuất file Excel.</span>
-          </div>
-        ) : (
-          <div className="toolbar-notice text-success">
-            <CheckCircle size={18} />
-            <span>
-              Sẵn sàng xuất 01 File Excel gồm 02 Sheet: <b>1. PHIẾU TRÌNH</b> (Hội sở & Đơn vị) & <b>2. BẢNG KÊ</b> (Phần A & B) cho <b>{selectedCount}</b> dòng đã chọn.
-            </span>
-          </div>
-        )}
-
-        <button
-          type="button"
-          className="btn-create-po btn-primary-action"
-          disabled={selectedCount === 0 || isExporting}
-          onClick={onCreatePO}
-          title="Tạo hồ sơ và xuất duy nhất 01 file Excel gồm 02 Sheet"
-        >
-          <FileSpreadsheet size={18} />
-          {isExporting ? 'Đang tạo & xuất Excel...' : 'XÁC NHẬN VÀ TẢI 01 FILE EXCEL'}
-        </button>
       </div>
     </div>
   );

@@ -1,0 +1,459 @@
+// Prisma Schema for TRINHMUASAMONLINE - Master PO Management
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. users
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  fullName      String    @map("full_name")
+  phone         String?
+  departmentId  String?   @map("department_id")
+  supplierId    String?   @map("supplier_id")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  department    Department? @relation(fields: [departmentId], references: [id])
+  supplier      Supplier?   @relation(fields: [supplierId], references: [id])
+  userRoles     UserRole[]
+  departmentUsers DepartmentUser[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+// 2. roles
+model Role {
+  id          String   @id @default(uuid())
+  code        String   @unique // ADMIN, QTTS, DON_VI, SUPPLIER, APPROVER, VIEWER
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+// 3. user_roles
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// 4. departments
+model Department {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  name      String
+  type      String    @default("CHI_NHANH") // HOI_SO, CHI_NHANH, PGD, ONEBANK
+  parentId  String?   @map("parent_id")
+  region    String?   // MIEN_BAC, MIEN_TRUNG, MIEN_NAM
+  address   String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  parent          Department?          @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children        Department[]         @relation("DeptHierarchy")
+  users           User[]
+  departmentUsers DepartmentUser[]
+  requestItems    ProcurementRequestItem[]
+  poAllocations   PoItemAllocation[]
+  receipts        ReceiptConfirmation[]
+
+  @@map("departments")
+}
+
+// 5. department_users
+model DepartmentUser {
+  id           String   @id @default(uuid())
+  departmentId String   @map("department_id")
+  userId       String   @map("user_id")
+  isPrimary    Boolean  @default(true) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@map("department_users")
+}
+
+// 6. suppliers
+model Supplier {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  taxCode       String?   @map("tax_code")
+  contactPerson String?   @map("contact_person")
+  phone         String?
+  email         String?
+  address       String?
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  users          User[]
+  requestItems   ProcurementRequestItem[]
+  purchaseOrders PurchaseOrder[]
+  deliveries     PurchaseOrderDelivery[]
+
+  @@map("suppliers")
+}
+
+// 7. procurement_batches
+model ProcurementBatch {
+  id          String   @id @default(uuid())
+  batchCode   String   @unique @map("batch_code") // e.g. PB-2026-Q1
+  title       String
+  description String?
+  year        Int      @default(2026)
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, CLOSED
+  createdById String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  requests ProcurementRequest[]
+
+  @@map("procurement_batches")
+}
+
+// 8. procurement_requests
+model ProcurementRequest {
+  id             String    @id @default(uuid())
+  batchId        String?   @map("batch_id")
+  requestNumber  String    @unique @map("request_number") // e.g. PYC-2026-00048
+  title          String
+  status         String    @default("DRAFT") // DRAFT, CLASSIFYING, READY_FOR_SUBMISSION, SUBMITTED, APPROVED, REJECTED, CANCELLED
+  submissionDate DateTime? @map("submission_date")
+  approvedDate   DateTime? @map("approved_date")
+  totalAmount    Decimal   @default(0) @db.Decimal(18, 2) @map("total_amount")
+  hoiSoAmount    Decimal   @default(0) @db.Decimal(18, 2) @map("hoi_so_amount")
+  donViAmount    Decimal   @default(0) @db.Decimal(18, 2) @map("don_vi_amount")
+  totalItems     Int       @default(0) @map("total_items")
+  requesterId    String?   @map("requester_id")
+  createdById    String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  batch          ProcurementBatch?        @relation(fields: [batchId], references: [id])
+  items          ProcurementRequestItem[]
+  approvalEvents ApprovalEvent[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("procurement_requests")
+}
+
+// 9. procurement_request_items
+model ProcurementRequestItem {
+  id             String   @id @default(uuid())
+  requestId      String   @map("request_id")
+  stt            Int
+  departmentId   String?  @map("department_id")
+  departmentName String   @map("department_name")
+  supplierId     String?  @map("supplier_id")
+  supplierName   String   @map("supplier_name")
+  itemName       String   @map("item_name")
+  spec           String?
+  quantity       Int      @default(1)
+  unitPrice      Decimal  @default(0) @db.Decimal(18, 2) @map("unit_price")
+  amount         Decimal  @default(0) @db.Decimal(18, 2)
+  purpose        String?
+  msp            String?
+  paymentGroup   String   @default("CHUA_PHAN_LOAI") @map("payment_group") // HOI_SO, DON_VI, CHUA_PHAN_LOAI
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  request        ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  department     Department?        @relation(fields: [departmentId], references: [id])
+  supplier       Supplier?          @relation(fields: [supplierId], references: [id])
+  sourceItems    PoSourceItem[]
+
+  @@map("procurement_request_items")
+}
+
+// 10. approval_events
+model ApprovalEvent {
+  id         String   @id @default(uuid())
+  requestId  String   @map("request_id")
+  actorId    String?  @map("actor_id")
+  actorName  String   @map("actor_name")
+  role       String
+  decision   String   // SUBMIT, APPROVE, REJECT, CANCEL
+  comment    String?
+  decidedAt  DateTime @default(now()) @map("decided_at")
+
+  request ProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("approval_events")
+}
+
+// 11. purchase_orders
+model PurchaseOrder {
+  id                   String    @id @default(uuid())
+  poNumber             String    @unique @map("po_number") // e.g. PO-2026-00048-FTI
+  requestId            String?   @map("request_id")
+  supplierId           String    @map("supplier_id")
+  supplierName         String    @map("supplier_name")
+  orderDate            DateTime  @default(now()) @map("order_date")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  status               String    @default("DRAFT") @map("status") // DRAFT, ISSUED, SUPPLIER_CONFIRMED, PARTIALLY_DELIVERED, DELIVERED, PARTIALLY_RECEIVED, RECEIVED, COMPLETED, CANCELLED
+  totalAmount          Decimal   @default(0) @db.Decimal(18, 2) @map("total_amount")
+  totalQuantity        Int       @default(0) @map("total_quantity")
+  deliveredQuantity    Int       @default(0) @map("delivered_quantity")
+  receivedQuantity     Int       @default(0) @map("received_quantity")
+  paymentGroup         String?   @map("payment_group") // HOI_SO, DON_VI, HON_HOP
+  idempotencyKey       String?   @unique @map("idempotency_key")
+  note                 String?
+  createdById          String?   @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  request     ProcurementRequest?      @relation(fields: [requestId], references: [id])
+  supplier    Supplier                 @relation(fields: [supplierId], references: [id])
+  items       PurchaseOrderItem[]
+  sourceItems PoSourceItem[]
+  allocations PoItemAllocation[]
+  deliveries  PurchaseOrderDelivery[]
+  receipts    ReceiptConfirmation[]
+
+  @@unique([requestId, supplierId])
+  @@map("purchase_orders")
+}
+
+// 12. purchase_order_items
+model PurchaseOrderItem {
+  id                String   @id @default(uuid())
+  poId              String   @map("po_id")
+  itemName          String   @map("item_name")
+  spec              String?
+  quantity          Int      @default(1)
+  unitPrice         Decimal  @default(0) @db.Decimal(18, 2) @map("unit_price")
+  amount            Decimal  @default(0) @db.Decimal(18, 2)
+  deliveredQuantity Int      @default(0) @map("delivered_quantity")
+  receivedQuantity  Int      @default(0) @map("received_quantity")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  po          PurchaseOrder      @relation(fields: [poId], references: [id], onDelete: Cascade)
+  sourceItems PoSourceItem[]
+  allocations PoItemAllocation[]
+
+  @@map("purchase_order_items")
+}
+
+// 13. po_source_items
+model PoSourceItem {
+  id           String   @id @default(uuid())
+  poId         String   @map("po_id")
+  poItemId     String   @map("po_item_id")
+  sourceItemId String   @map("source_item_id")
+  quantity     Int
+  amount       Decimal  @db.Decimal(18, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  po         PurchaseOrder          @relation(fields: [poId], references: [id], onDelete: Cascade)
+  poItem     PurchaseOrderItem      @relation(fields: [poItemId], references: [id], onDelete: Cascade)
+  sourceItem ProcurementRequestItem @relation(fields: [sourceItemId], references: [id], onDelete: Cascade)
+
+  @@map("po_source_items")
+}
+
+// 14. po_item_allocations
+model PoItemAllocation {
+  id                String   @id @default(uuid())
+  poId              String   @map("po_id")
+  poItemId          String   @map("po_item_id")
+  departmentId      String   @map("department_id")
+  departmentName    String   @map("department_name")
+  allocatedQuantity Int      @default(0) @map("allocated_quantity")
+  deliveredQuantity Int      @default(0) @map("delivered_quantity")
+  receivedQuantity  Int      @default(0) @map("received_quantity")
+  purpose           String?
+  msp               String?
+  status            String   @default("PENDING") // PENDING, PARTIALLY_DELIVERED, DELIVERED, PARTIALLY_RECEIVED, COMPLETED
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  po                 PurchaseOrder            @relation(fields: [poId], references: [id], onDelete: Cascade)
+  poItem             PurchaseOrderItem        @relation(fields: [poItemId], references: [id], onDelete: Cascade)
+  department         Department               @relation(fields: [departmentId], references: [id])
+  deliveryItems      DeliveryItem[]
+  receiptItems       ReceiptConfirmationItem[]
+
+  @@map("po_item_allocations")
+}
+
+// 15. purchase_order_deliveries
+model PurchaseOrderDelivery {
+  id             String    @id @default(uuid())
+  poId           String    @map("po_id")
+  deliveryCode   String    @unique @map("delivery_code")
+  supplierId     String?   @map("supplier_id")
+  deliveryDate   DateTime  @default(now()) @map("delivery_date")
+  status         String    @default("DISPATCHED") // DISPATCHED, DELIVERED, CONFIRMED
+  carrier        String?
+  trackingNumber String?   @map("tracking_number")
+  note           String?
+  createdById    String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  po            PurchaseOrder          @relation(fields: [poId], references: [id], onDelete: Cascade)
+  supplier      Supplier?              @relation(fields: [supplierId], references: [id])
+  deliveryItems DeliveryItem[]
+  receipts      ReceiptConfirmation[]
+
+  @@map("purchase_order_deliveries")
+}
+
+// 16. delivery_items
+model DeliveryItem {
+  id                String   @id @default(uuid())
+  deliveryId        String   @map("delivery_id")
+  poItemId          String?  @map("po_item_id")
+  allocationId      String?  @map("allocation_id")
+  quantityDelivered Int      @default(0) @map("quantity_delivered")
+  note              String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  delivery   PurchaseOrderDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  allocation PoItemAllocation?     @relation(fields: [allocationId], references: [id])
+
+  @@map("delivery_items")
+}
+
+// 17. receipt_confirmations
+model ReceiptConfirmation {
+  id            String    @id @default(uuid())
+  receiptCode   String    @unique @map("receipt_code")
+  poId          String?   @map("po_id")
+  deliveryId    String?   @map("delivery_id")
+  departmentId  String    @map("department_id")
+  receivedDate  DateTime  @default(now()) @map("received_date")
+  status        String    @default("RECEIVED") // RECEIVED_FULL, RECEIVED_PARTIAL, DISCREPANCY
+  receiverName  String    @map("receiver_name")
+  receiverId    String?   @map("receiver_id")
+  conditionNote String?   @map("condition_note")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  po           PurchaseOrder?            @relation(fields: [poId], references: [id])
+  delivery     PurchaseOrderDelivery?    @relation(fields: [deliveryId], references: [id])
+  department   Department                @relation(fields: [departmentId], references: [id])
+  receiptItems ReceiptConfirmationItem[]
+
+  @@map("receipt_confirmations")
+}
+
+// 18. receipt_confirmation_items
+model ReceiptConfirmationItem {
+  id                String   @id @default(uuid())
+  receiptId         String   @map("receipt_id")
+  poItemId          String?  @map("po_item_id")
+  allocationId      String?  @map("allocation_id")
+  quantityReceived  Int      @default(0) @map("quantity_received")
+  quantityDamaged   Int      @default(0) @map("quantity_damaged")
+  quantityMissing   Int      @default(0) @map("quantity_missing")
+  discrepancyReason String?  @map("discrepancy_reason")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  receipt    ReceiptConfirmation @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  allocation PoItemAllocation?   @relation(fields: [allocationId], references: [id])
+
+  @@map("receipt_confirmation_items")
+}
+
+// 19. lifecycle_events
+model LifecycleEvent {
+  id         String   @id @default(uuid())
+  entityType String   @map("entity_type") // REQUEST, PURCHASE_ORDER, DELIVERY, RECEIPT
+  entityId   String   @map("entity_id")
+  eventType  String   @map("event_type")
+  oldStatus  String?  @map("old_status")
+  newStatus  String?  @map("new_status")
+  actorId    String?  @map("actor_id")
+  actorName  String?  @map("actor_name")
+  eventAt    DateTime @default(now()) @map("event_at")
+  note       String?
+  metadata   Json?
+
+  @@index([entityType, entityId])
+  @@map("lifecycle_events")
+}
+
+// 20. attachments
+model Attachment {
+  id         String   @id @default(uuid())
+  entityType String   @map("entity_type") // PURCHASE_ORDER, DELIVERY, RECEIPT, REQUEST
+  entityId   String   @map("entity_id")
+  fileName   String   @map("file_name")
+  filePath   String   @map("file_path")
+  fileSize   Int      @default(0) @map("file_size")
+  mimeType   String?  @map("mime_type")
+  uploadedBy String?  @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+// 21. audit_logs
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  userName  String?  @map("user_name")
+  userRole  String?  @map("user_role")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  oldValues Json?    @map("old_values")
+  newValues Json?    @map("new_values")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// 22. refresh_tokens
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

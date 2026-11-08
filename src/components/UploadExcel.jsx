@@ -28,7 +28,8 @@ export function UploadExcel({
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
         onFileSelect(file);
       } else {
         alert('Vui lòng chỉ tải lên file định dạng Excel (.xlsx hoặc .xls)');
@@ -38,7 +39,10 @@ export function UploadExcel({
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      onFileSelect(e.target.files[0]);
+      const file = e.target.files[0];
+      onFileSelect(file);
+      // Reset input value để có thể chọn lại file cùng tên nếu cần
+      e.target.value = '';
     }
   };
 

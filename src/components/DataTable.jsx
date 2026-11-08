@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { EditableCell } from './EditableCell.jsx';
-import { RowSelection } from './RowSelection.jsx';
 import { normalizeText } from '../utils/validation.js';
 import { formatCurrency } from '../utils/currencyUtils.js';
 import {
@@ -13,9 +12,7 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle,
-  Landmark,
-  Building2
+  AlertTriangle
 } from 'lucide-react';
 
 export function DataTable({
@@ -32,7 +29,6 @@ export function DataTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
   const [unitFilter, setUnitFilter] = useState('');
-  const [groupFilter, setGroupFilter] = useState(''); // '' | 'A' | 'B'
 
   // Sắp xếp (sorting)
   const [sortField, setSortField] = useState(null);
@@ -74,15 +70,9 @@ export function DataTable({
         return false;
       }
 
-      // Lọc Nhóm TT
-      if (groupFilter) {
-        const itemGroup = r.payGroup === 'B' ? 'B' : 'A';
-        if (itemGroup !== groupFilter) return false;
-      }
-
       return true;
     });
-  }, [rows, searchTerm, supplierFilter, unitFilter, groupFilter]);
+  }, [rows, searchTerm, supplierFilter, unitFilter]);
 
   // Sắp xếp
   const sortedRows = useMemo(() => {
@@ -127,21 +117,7 @@ export function DataTable({
     }
   };
 
-  // Thống kê các dòng được chọn
-  const selectedRows = rows.filter(r => r.selected !== false);
-  const selectedCount = selectedRows.length;
-  const totalSelectedAmount = selectedRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-  const totalSelectedQty = selectedRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
-
-  // Thống kê chi tiết theo từng nhóm A và B
-  const itemsA = selectedRows.filter(r => (r.payGroup || 'A') === 'A');
-  const itemsB = selectedRows.filter(r => r.payGroup === 'B');
-  const countA = itemsA.length;
-  const amountA = itemsA.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const countB = itemsB.length;
-  const amountB = itemsB.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-
-  const isAllPageSelected = paginatedRows.length > 0 && paginatedRows.every(r => r.selected !== false);
+  const isAllPageSelected = paginatedRows.length > 0 && paginatedRows.every(r => r.selected === true);
 
   return (
     <div className="datatable-container">
@@ -178,22 +154,6 @@ export function DataTable({
             <Filter size={14} className="filter-icon" />
             <select
               className="filter-select"
-              value={groupFilter}
-              onChange={(e) => {
-                setGroupFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="">Tất cả Nhóm thanh toán (Cả 2 nhóm)</option>
-              <option value="A">Nhóm A: Hội sở thanh toán</option>
-              <option value="B">Nhóm B: Đơn vị thanh toán</option>
-            </select>
-          </div>
-
-          <div className="filter-select-wrapper">
-            <Filter size={14} className="filter-icon" />
-            <select
-              className="filter-select"
               value={supplierFilter}
               onChange={(e) => {
                 setSupplierFilter(e.target.value);
@@ -226,21 +186,7 @@ export function DataTable({
         </div>
       </div>
 
-      {/* Thanh chọn dòng và thống kê tiền 2 nhóm */}
-      <RowSelection
-        selectedCount={selectedCount}
-        totalCount={rows.length}
-        totalAmount={totalSelectedAmount}
-        totalQty={totalSelectedQty}
-        countA={countA}
-        amountA={amountA}
-        countB={countB}
-        amountB={amountB}
-        onSelectAll={onSelectAll}
-        onDeselectAll={onDeselectAll}
-      />
-
-      {/* Bảng dữ liệu chính */}
+      {/* Bảng dữ liệu chính - Không hiển thị cột Nhóm TT */}
       <div className="table-responsive">
         <table className="procurement-table">
           <thead>
@@ -261,9 +207,6 @@ export function DataTable({
               </th>
               <th className="th-stt" onClick={() => handleSort('stt')}>
                 STT {sortField === 'stt' ? (sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} />}
-              </th>
-              <th className="th-group">
-                Nhóm TT
               </th>
               <th className="th-date" onClick={() => handleSort('date')}>
                 Ngày {sortField === 'date' ? (sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} />}
@@ -294,14 +237,13 @@ export function DataTable({
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="empty-table-cell">
+                <td colSpan={12} className="empty-table-cell">
                   Không tìm thấy dòng dữ liệu nào phù hợp với bộ lọc.
                 </td>
               </tr>
             ) : (
               paginatedRows.map((row) => {
-                const isSelected = row.selected !== false;
-                const isGroupA = (row.payGroup || 'A') === 'A';
+                const isSelected = row.selected === true;
                 return (
                   <tr key={row.id} className={isSelected ? 'row-selected' : 'row-deselected'}>
                     <td className="cell-checkbox">
@@ -312,19 +254,6 @@ export function DataTable({
                       />
                     </td>
                     <td className="cell-stt">{row.stt}</td>
-                    
-                    {/* Cột chọn Nhóm thanh toán (Hội sở / Đơn vị) */}
-                    <td className="cell-group">
-                      <select
-                        className={`badge-select ${isGroupA ? 'badge-ho' : 'badge-dv'}`}
-                        value={isGroupA ? 'A' : 'B'}
-                        onChange={(e) => onUpdateCell(row.id, 'payGroup', e.target.value)}
-                        title="Chọn nhóm thanh toán: A. Hội sở TT hoặc B. Đơn vị TT"
-                      >
-                        <option value="A">A. Hội sở TT</option>
-                        <option value="B">B. Đơn vị TT</option>
-                      </select>
-                    </td>
 
                     <td className="cell-date">
                       <EditableCell
@@ -375,14 +304,16 @@ export function DataTable({
                         value={row.price}
                         type="number"
                         align="right"
+                        isCurrency
                         onChange={(v) => onUpdateCell(row.id, 'price', v)}
                       />
                     </td>
-                    <td className="cell-amount font-bold text-navy">
+                    <td className="cell-amount">
                       <EditableCell
                         value={row.amount}
                         type="number"
                         align="right"
+                        isCurrency
                         onChange={(v) => onUpdateCell(row.id, 'amount', v)}
                       />
                     </td>
@@ -393,22 +324,28 @@ export function DataTable({
                       />
                     </td>
                     <td className="cell-actions">
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        onClick={() => onDuplicateRow(row.id)}
-                        title="Sao chép dòng này"
-                      >
-                        <Copy size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-icon btn-icon-danger"
-                        onClick={() => onDeleteRow(row.id)}
-                        title="Xóa dòng này"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="row-action-buttons">
+                        <button
+                          type="button"
+                          className="btn-action-icon"
+                          onClick={() => onDuplicateRow(row.id)}
+                          title="Sao chép dòng này"
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-action-icon btn-action-delete"
+                          onClick={() => {
+                            if (window.confirm(`Bạn có chắc muốn xóa dòng "${row.item}"?`)) {
+                              onDeleteRow(row.id);
+                            }
+                          }}
+                          title="Xóa dòng này"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -421,46 +358,49 @@ export function DataTable({
       {/* Phân trang */}
       <div className="table-pagination-bar">
         <div className="pagination-info">
-          Hiển thị {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, sortedRows.length)} / {sortedRows.length} dòng dữ liệu
+          Hiển thị <b>{Math.min(filteredRows.length, (currentPage - 1) * pageSize + 1)}</b> -{' '}
+          <b>{Math.min(filteredRows.length, currentPage * pageSize)}</b> trên tổng số <b>{filteredRows.length}</b> dòng
         </div>
 
         <div className="pagination-controls">
-          <select
-            className="page-size-select"
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-          >
-            <option value={10}>10 dòng/trang</option>
-            <option value={15}>15 dòng/trang</option>
-            <option value={25}>25 dòng/trang</option>
-            <option value={50}>50 dòng/trang</option>
-            <option value={100}>100 dòng/trang</option>
-          </select>
+          <div className="page-size-selector">
+            <span>Dòng/trang:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+            >
+              <option value={10}>10</option>
+              <option value={15}>15</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
 
-          <button
-            type="button"
-            className="btn-page-nav"
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-          >
-            <ChevronLeft size={16} />
-          </button>
-
-          <span className="page-indicator">
-            Trang <b>{currentPage}</b> / {totalPages}
-          </span>
-
-          <button
-            type="button"
-            className="btn-page-nav"
-            disabled={currentPage >= totalPages}
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-          >
-            <ChevronRight size={16} />
-          </button>
+          <div className="page-nav-buttons">
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="page-current">
+              Trang {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

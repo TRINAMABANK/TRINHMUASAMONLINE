@@ -10,6 +10,9 @@
 export function formatExcelDate(v) {
   if (v === null || v === undefined || v === '') return '';
 
+  const s = String(v).trim();
+  if (!s || s.toLowerCase().includes('invalid')) return '';
+
   // Trường hợp là số serial ngày của Excel (ví dụ: 45585)
   if (typeof v === 'number') {
     // Excel tính từ 30/12/1899 do bug năm 1900 nhuận
@@ -30,14 +33,13 @@ export function formatExcelDate(v) {
     return `${day}/${month}/${year}`;
   }
 
-  const s = String(v).trim();
-  // Khớp chuỗi DD/MM/YYYY hoặc DD-MM-YYYY hoặc DD.MM.YYYY
-  const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  // Khớp chuỗi DD/MM/YYYY hoặc DD-MM-YYYY hoặc DD.MM.YYYY (kể cả có kèm giờ)
+  const m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
   if (m) {
     return `${String(m[1]).padStart(2, '0')}/${String(m[2]).padStart(2, '0')}/${m[3]}`;
   }
 
-  // Khớp chuỗi YYYY-MM-DD
+  // Khớp chuỗi YYYY-MM-DD (kể cả có kèm giờ ISO)
   const mIso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (mIso) {
     return `${String(mIso[3]).padStart(2, '0')}/${String(mIso[2]).padStart(2, '0')}/${mIso[1]}`;

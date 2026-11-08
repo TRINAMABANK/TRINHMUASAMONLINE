@@ -27,3 +27,7 @@ dist-ssr
 temp_profile/
 screenshots/edge_screenshot.png
 test_output/
+backend/data/
+backend/data/*
+~$*
+*.tmp

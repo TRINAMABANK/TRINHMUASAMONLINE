@@ -1,18 +1,84 @@
 import { useState, useEffect, useCallback } from 'react';
+import { poApi } from '../services/api/poApi.js';
 import { storageService } from '../services/storageService.js';
 import { generateNextPONumber } from '../services/poGenerator.js';
 import { excelExporter } from '../services/excelExporter.js';
-import { WORKFLOW_STAGES } from '../utils/constants.js';
 
 export function usePOManagement() {
   const [pos, setPOs] = useState([]);
   const [activePOId, setActivePOId] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiOnline, setApiOnline] = useState(true);
 
-  // Load danh sách ban đầu từ storage
-  const refreshPOs = useCallback(() => {
-    const list = storageService.getPOs();
-    setPOs(list);
+  // Chuyển đổi dữ liệu từ Backend PostgreSQL sang định dạng chuẩn của giao diện
+  const normalizeBackendPO = (p) => {
+    return {
+      id: p.id,
+      po: p.po_number || p.po,
+      po_number: p.po_number || p.po,
+      date: p.order_date ? new Date(p.order_date).toISOString().slice(0, 10) : p.date,
+      requester: p.requester_name || p.requester,
+      note: p.note || '',
+      submission_status: p.submission_status || 'KHOI_TAO',
+      po_status: p.po_status || 'DA_TAO_PO',
+      delivery_status: p.delivery_status || 'CHUA_GIAO',
+      current_stage: p.current_stage || 'PHIEU_TRINH_XUAT',
+      is_overdue: p.is_overdue || false,
+      status: p.delivery_status === 'HOAN_TAT' || p.po_status === 'HOAN_TAT'
+        ? 'Hoàn tất'
+        : p.delivery_status === 'DANG_GIAO'
+          ? 'Đang giao hàng'
+          : p.po_status === 'DA_TAO_PO' || p.po_status === 'DOI_TAC_XAC_NHAN'
+            ? 'Đã đặt hàng'
+            : p.submission_status === 'DA_DUYET'
+              ? 'Đã duyệt'
+              : 'Chờ trình ký',
+      items: (p.items || []).map(it => ({
+        id: it.id,
+        stt: it.stt,
+        date: it.request_date || it.date || '',
+        request_date: it.request_date || it.date || '',
+        unit: it.unit_name || it.unit,
+        supplier: it.supplier_name || it.supplier,
+        item: it.item_name || it.item,
+        qty: Number(it.qty) || 1,
+        spec: it.spec || 'CÁI',
+        price: Number(it.unit_price || it.price) || 0,
+        amount: Number(it.amount) || 0,
+        purpose: it.purpose || '',
+        msp: it.msp || '',
+        payGroup: it.pay_group || it.payGroup || null,
+        receivedQty: Number(it.received_qty) || 0,
+        selected: it.selected !== false
+      })),
+      created: p.created_at || p.created || new Date().toISOString(),
+      updated: p.updated_at ? new Date(p.updated_at).toLocaleString('vi-VN') : (p.updated || new Date().toLocaleString('vi-VN')),
+      logs: p.logs || []
+    };
+  };
+
+  // Load danh sách từ Backend API (kết nối PostgreSQL thật)
+  const refreshPOs = useCallback(async (filters = {}) => {
+    setIsLoading(true);
+    try {
+      const res = await poApi.getPOs(filters);
+      if (res.success && Array.isArray(res.data)) {
+        const normalized = res.data.map(normalizeBackendPO);
+        setPOs(normalized);
+        storageService.savePOs(normalized); // Đồng bộ vào local cache
+        setApiOnline(true);
+        return normalized;
+      }
+    } catch (e) {
+      console.warn('[usePOManagement] Không thể tải từ API Backend, chuyển sang LocalStorage fallback:', e.message);
+      setApiOnline(false);
+      const list = storageService.getPOs();
+      setPOs(list);
+      return list;
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -22,7 +88,7 @@ export function usePOManagement() {
   // Hồ sơ PO đang được mở chi tiết
   const activePO = pos.find(p => p.id === activePOId) || null;
 
-  // Tạo mới một hồ sơ PO từ các dòng đã chọn
+  // Tạo mới một hồ sơ PO từ các dòng đã chọn và lưu vào PostgreSQL
   const createPO = useCallback(async ({
     poNumber,
     date,
@@ -36,74 +102,106 @@ export function usePOManagement() {
       throw new Error('Chưa có dòng nào được chọn để tạo hồ sơ.');
     }
 
-    const currentPOs = storageService.getPOs();
-    const finalPO = poNumber || generateNextPONumber(currentPOs);
+    const finalPO = poNumber || generateNextPONumber(pos);
 
-    const newPO = {
-      id: `po_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      po: finalPO,
-      date: date || new Date().toISOString().slice(0, 10),
-      requester: requester || 'Nguyễn Văn A',
-      note: note || '',
-      payGroup: payGroup || 'A',
-      source: source || 'File Excel nhập khẩu',
-      items: JSON.parse(JSON.stringify(selectedRows)),
-      status: 'Chờ trình ký', // Trạng thái mặc định sau khi tạo
-      created: new Date().toISOString(),
-      updated: new Date().toLocaleString('vi-VN'),
-      receivedQty: 0,
-      orderSupplier: selectedRows[0]?.supplier || '',
-      orderNo: '',
-      orderDate: '',
-      logs: [
-        {
-          time: new Date().toLocaleString('vi-VN'),
-          text: `Khởi tạo hồ sơ ${finalPO} với ${selectedRows.length} dòng hàng hóa từ ${source || 'Excel'}`
-        }
-      ]
-    };
+    // 1. Thử lưu vào Backend API trước
+    let createdRecord = null;
+    try {
+      const apiPayload = {
+        po_number: finalPO,
+        date: date || new Date().toISOString().slice(0, 10),
+        requester: requester || 'Nguyễn Văn A',
+        note: note || '',
+        source: source || 'File Excel nhập khẩu',
+        items: selectedRows.map(r => ({
+          stt: r.stt,
+          date: r.date,
+          request_date: r.date,
+          unit: r.unit,
+          supplier: r.supplier,
+          item: r.item,
+          qty: r.qty,
+          spec: r.spec,
+          price: r.price,
+          amount: r.amount,
+          purpose: r.purpose,
+          msp: r.msp,
+          payGroup: r.payGroup
+        }))
+      };
 
-    const updatedList = storageService.addPO(newPO);
-    setPOs(updatedList);
-    setActivePOId(newPO.id);
+      const res = await poApi.createPO(apiPayload);
+      if (res.success && res.data) {
+        createdRecord = normalizeBackendPO(res.data);
+      }
+    } catch (err) {
+      console.warn('[usePOManagement] Lưu Backend API lỗi, lưu Local fallback:', err.message);
+    }
 
-    // Tự động xuất 2 file Excel
+    // Nếu không kết nối được backend, fallback sang local object
+    if (!createdRecord) {
+      createdRecord = {
+        id: `po_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        po: finalPO,
+        po_number: finalPO,
+        date: date || new Date().toISOString().slice(0, 10),
+        requester: requester || 'Nguyễn Văn A',
+        note: note || '',
+        payGroup: payGroup || 'A',
+        source: source || 'File Excel nhập khẩu',
+        items: JSON.parse(JSON.stringify(selectedRows)),
+        status: 'Chờ trình ký',
+        created: new Date().toISOString(),
+        updated: new Date().toLocaleString('vi-VN'),
+        receivedQty: 0,
+        logs: [
+          {
+            time: new Date().toLocaleString('vi-VN'),
+            text: `Khởi tạo hồ sơ ${finalPO} với ${selectedRows.length} dòng hàng hóa từ ${source || 'Excel'}`
+          }
+        ]
+      };
+      storageService.addPO(createdRecord);
+    }
+
+    // Cập nhật state
+    await refreshPOs();
+    setActivePOId(createdRecord.id);
+
+    // Tự động xuất 01 File Excel gồm 02 Sheet chuẩn
     try {
       setIsExporting(true);
-      await excelExporter.exportBothExcelFiles(newPO);
+      await excelExporter.exportBothExcelFiles(createdRecord);
     } catch (e) {
-      console.error('Lỗi tự động xuất 2 file:', e);
+      console.error('Lỗi tự động xuất 01 file Excel:', e);
     } finally {
       setIsExporting(false);
     }
 
-    return newPO;
-  }, []);
-
-  // Chuyển đổi trạng thái quy trình (Workflow)
-  const updateStatus = useCallback((poId, nextStatus, comment = '') => {
-    const po = pos.find(p => p.id === poId);
-    if (!po) return null;
-
-    const logText = comment 
-      ? `Chuyển trạng thái sang "${nextStatus}": ${comment}`
-      : `Chuyển trạng thái sang "${nextStatus}"`;
-
-    storageService.addLog(poId, logText);
-    const updated = storageService.updatePO(poId, { status: nextStatus });
-    refreshPOs();
-    return updated;
+    return createdRecord;
   }, [pos, refreshPOs]);
 
-  // Cập nhật thông tin đặt hàng & nhận hàng
-  const updateOrderInfo = useCallback((poId, orderData) => {
-    storageService.addLog(poId, 'Cập nhật thông tin đặt hàng / nhận hàng');
-    const updated = storageService.updatePO(poId, orderData);
-    refreshPOs();
-    return updated;
+  // Cập nhật trạng thái quy trình
+  const updateStatus = useCallback(async (poId, nextStatus, comment = '') => {
+    try {
+      await poApi.updatePO(poId, { status: nextStatus, note: comment });
+    } catch (e) {
+      storageService.updatePO(poId, { status: nextStatus });
+    }
+    await refreshPOs();
   }, [refreshPOs]);
 
-  // Xuất 2 file Excel cho một hồ sơ bất kỳ
+  // Cập nhật thông tin đặt hàng / nhận hàng
+  const updateOrderInfo = useCallback(async (poId, orderData) => {
+    try {
+      await poApi.updatePO(poId, orderData);
+    } catch (e) {
+      storageService.updatePO(poId, orderData);
+    }
+    await refreshPOs();
+  }, [refreshPOs]);
+
+  // Xuất 1 file Excel gồm 02 sheet cho hồ sơ bất kỳ
   const exportPO = useCallback(async (poId) => {
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('Không tìm thấy hồ sơ PO.');
@@ -111,110 +209,21 @@ export function usePOManagement() {
     setIsExporting(true);
     try {
       await excelExporter.exportBothExcelFiles(po);
-      storageService.addLog(poId, 'Xuất lại bộ 2 file Excel: Bảng trình ký & Bảng kê');
-      refreshPOs();
     } finally {
       setIsExporting(false);
     }
-  }, [pos, refreshPOs]);
+  }, [pos]);
 
   // Xóa hồ sơ
-  const deletePO = useCallback((poId) => {
-    storageService.deletePO(poId);
+  const deletePO = useCallback(async (poId) => {
+    try {
+      await poApi.deletePO(poId);
+    } catch (e) {
+      storageService.deletePO(poId);
+    }
     if (activePOId === poId) setActivePOId(null);
-    refreshPOs();
+    await refreshPOs();
   }, [activePOId, refreshPOs]);
-
-  // Nạp 3 hồ sơ mẫu để thử nghiệm nhanh
-  const seedDemoData = useCallback(() => {
-    const existing = storageService.getPOs();
-    const demoItems = [
-      {
-        unit: 'Chi Nhánh Hà Nội',
-        supplier: 'Công ty Viễn Thông Quốc Tế FTI',
-        item: 'MÁY IN LASER BROTHER HL - L6210DW CÔNG SUẤT LỚN',
-        qty: 2,
-        spec: 'CÁI',
-        price: 10315000,
-        amount: 20630000,
-        purpose: 'Trang bị thay thế máy in cũ đã hỏng tại phòng kế toán',
-        msp: '801BNPT20260425113035',
-        selected: true
-      },
-      {
-        unit: 'Chi nhánh Thanh Hóa',
-        supplier: 'CTY FTI',
-        item: 'MÁY TÍNH ĐỂ BÀN (PC) LENOVO ThinkCentre Neo 50s Gen 6 U3 Ram 16GB SSD 512GB',
-        qty: 3,
-        spec: 'BỘ',
-        price: 26811000,
-        amount: 80433000,
-        purpose: 'Trang bị cho Onebank Bình Minh',
-        msp: '803BNPT20261020150645',
-        selected: true
-      },
-      {
-        unit: 'PGD Đồng Xuân',
-        supplier: 'HANG TIN',
-        item: 'MÁY ĐẾM TIỀN TIANYU T18 & BỤC ĐỂ MÁY ĐẾM TIỀN CHUYÊN DỤNG',
-        qty: 4,
-        spec: 'BỘ',
-        price: 7290000,
-        amount: 29160000,
-        purpose: 'Phục vụ hoạt động kiểm ngân quầy giao dịch',
-        msp: '806BNPT20260521154956',
-        selected: true
-      }
-    ];
-
-    const demos = [
-      {
-        status: 'Chờ trình ký',
-        title: 'Hồ sơ trang bị máy in CN Hà Nội',
-        items: [demoItems[0]]
-      },
-      {
-        status: 'Đã duyệt',
-        title: 'Hồ sơ trang bị máy tính Onebank Thanh Hóa',
-        items: [demoItems[1]]
-      },
-      {
-        status: 'Đã đặt hàng',
-        title: 'Hồ sơ máy đếm tiền PGD Đồng Xuân',
-        items: [demoItems[2]],
-        orderSupplier: 'HANG TIN',
-        orderNo: 'ORD-2026-HT-09',
-        orderDate: new Date().toISOString().slice(0, 10),
-      }
-    ];
-
-    demos.forEach(d => {
-      const poNum = generateNextPONumber(storageService.getPOs());
-      const po = {
-        id: `demo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        po: poNum,
-        date: new Date().toISOString().slice(0, 10),
-        requester: 'Quản trị viên QTTS',
-        note: d.title,
-        payGroup: 'A',
-        source: 'Dữ liệu mẫu thử nghiệm',
-        items: d.items,
-        status: d.status,
-        created: new Date().toISOString(),
-        updated: new Date().toLocaleString('vi-VN'),
-        receivedQty: 0,
-        orderSupplier: d.orderSupplier || d.items[0].supplier,
-        orderNo: d.orderNo || '',
-        orderDate: d.orderDate || '',
-        logs: [
-          { time: new Date().toLocaleString('vi-VN'), text: 'Khởi tạo hồ sơ mẫu' }
-        ]
-      };
-      storageService.addPO(po);
-    });
-
-    refreshPOs();
-  }, [refreshPOs]);
 
   return {
     pos,
@@ -222,13 +231,14 @@ export function usePOManagement() {
     activePOId,
     setActivePOId,
     isExporting,
+    isLoading,
+    apiOnline,
     refreshPOs,
     createPO,
     updateStatus,
     updateOrderInfo,
     exportPO,
     deletePO,
-    seedDemoData,
     generateNextPO: () => generateNextPONumber(pos)
   };
 }

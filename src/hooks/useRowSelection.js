@@ -6,9 +6,9 @@ import { useState, useMemo, useCallback } from 'react';
  * @param {Function} onUpdateRows Hàm cập nhật lại mảng rows
  */
 export function useRowSelection(rows = [], onUpdateRows) {
-  // Đếm số dòng được chọn
+  // Đếm số dòng được chọn (chỉ tính những dòng được tick chọn thực tế)
   const selectedRows = useMemo(() => {
-    return rows.filter(r => r.selected !== false);
+    return rows.filter(r => r.selected === true);
   }, [rows]);
 
   // Tổng tiền các dòng được chọn
@@ -50,6 +50,16 @@ export function useRowSelection(rows = [], onUpdateRows) {
     onUpdateRows(newRows);
   }, [rows, onUpdateRows]);
 
+  // Chọn tất cả các dòng chưa phân loại
+  const selectAllUnassigned = useCallback(() => {
+    if (!onUpdateRows) return;
+    const newRows = rows.map(r => ({
+      ...r,
+      selected: !r.payGroup ? true : false
+    }));
+    onUpdateRows(newRows);
+  }, [rows, onUpdateRows]);
+
   // Bỏ chọn tất cả
   const deselectAll = useCallback(() => {
     if (!onUpdateRows) return;
@@ -66,6 +76,7 @@ export function useRowSelection(rows = [], onUpdateRows) {
     isIndeterminate,
     toggleRow,
     selectAll,
+    selectAllUnassigned,
     deselectAll
   };
 }

@@ -24,9 +24,17 @@ export const STAGE_CONFIG = {
   'Từ chối': { color: 'danger', badgeClass: 'badge-rejected' },
 };
 
+export const PAY_GROUP_CODES = {
+  HOI_SO: 'HOI_SO',
+  DON_VI: 'DON_VI'
+};
+
 export const PAY_GROUPS = [
-  { id: 'A', name: 'A. Hội sở thanh toán' },
-  { id: 'B', name: 'B. Đơn vị thanh toán' },
+  { id: 'HOI_SO', name: 'Hội sở thanh toán', shortName: 'Hội sở', code: 'HOI_SO' },
+  { id: 'DON_VI', name: 'Đơn vị thanh toán', shortName: 'Đơn vị', code: 'DON_VI' },
+  // Giữ tương thích ngược nếu có
+  { id: 'A', name: 'A. Hội sở thanh toán', shortName: 'Hội sở', code: 'HOI_SO' },
+  { id: 'B', name: 'B. Đơn vị thanh toán', shortName: 'Đơn vị', code: 'DON_VI' },
 ];
 
 /**
@@ -44,56 +52,56 @@ export const COLUMN_DEFINITIONS = [
   {
     key: 'date',
     label: 'Ngày đề xuất',
-    aliases: ['ngay de xuat', 'ngay', 'date', 'ngay tao'],
+    aliases: ['ngay de xuat', 'ngay', 'date', 'ngay tao', 'ngay dx', 'ngay yc', 'ngay de nghi', 'ngay trinh', 'ngay lap', 'ngay phat hanh'],
     required: false,
     type: 'date'
   },
   {
     key: 'unit',
     label: 'Tên đơn vị',
-    aliases: ['ten don vi', 'don vi', 'chi nhanh', 'phong ban', 'dvkd'],
+    aliases: ['ten don vi', 'don vi', 'chi nhanh', 'phong ban', 'dvkd', 'bo phan', 'don vi de xuat', 'don vi yeu cau', 'don vi su dung'],
     required: false,
     type: 'text'
   },
   {
     key: 'supplier',
     label: 'Nhà cung cấp',
-    aliases: ['nha cung cap', 'ncc', 'vendor', 'supplier'],
+    aliases: ['nha cung cap', 'ncc', 'vendor', 'supplier', 'don vi cung cap', 'cong ty'],
     required: false,
     type: 'text'
   },
   {
     key: 'item',
     label: 'Nội dung',
-    aliases: ['noi dung', 'ten hang hoa', 'ten tai san', 'hang hoa', 'san pham', 'item'],
+    aliases: ['noi dung', 'ten hang hoa', 'ten tai san', 'hang hoa', 'san pham', 'item', 'ten vat tu', 'mat hang', 'ten thiet bi', 'thiet bi', 'hang muc', 'mo ta', 'chi tiet', 'danh muc', 'description', 'noi dung yeu cau', 'noi dung mua sam'],
     required: true,
     type: 'text'
   },
   {
     key: 'qty',
     label: 'SL',
-    aliases: ['sl', 'so luong', 'quantity', 'soluong'],
-    required: true,
+    aliases: ['sl', 'so luong', 'quantity', 'soluong', 'qty', 'so luong yeu cau', 'so luong mua', 'so luong de xuat'],
+    required: false,
     type: 'number'
   },
   {
     key: 'spec',
     label: 'Quy cách',
-    aliases: ['quy cach', 'model', 'cau hinh', 'dvt', 'don vi tinh'],
+    aliases: ['quy cach', 'model', 'cau hinh', 'dvt', 'don vi tinh', 'danh muc'],
     required: false,
     type: 'text'
   },
   {
     key: 'price',
     label: 'Đơn giá chưa VAT',
-    aliases: ['don gia chua vat', 'don gia', 'gia', 'price', 'unit price'],
+    aliases: ['don gia chua vat', 'don gia', 'gia', 'price', 'unit price', 'don gia (vnd)', 'don gia tam tinh'],
     required: false,
     type: 'number'
   },
   {
     key: 'amount',
     label: 'Thành tiền chưa VAT',
-    aliases: ['thanh tien chua vat', 'thanh tien', 'tong tien', 'amount', 'total'],
+    aliases: ['thanh tien chua vat', 'thanh tien', 'tong tien', 'amount', 'total', 'thanh tien (vnd)', 'tong gia tri', 'tong cong'],
     required: false,
     type: 'number'
   },

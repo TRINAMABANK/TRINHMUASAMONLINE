@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { StatusBadge } from '../components/StatusBadge.jsx';
+import { OrderEmailModal } from '../components/OrderEmailModal.jsx';
 import { formatCurrency, formatNumber } from '../utils/currencyUtils.js';
 import { formatExcelDate, todayYMD } from '../utils/dateUtils.js';
 import { WORKFLOW_STAGES } from '../utils/constants.js';
@@ -18,7 +19,8 @@ import {
   Calendar,
   User,
   Building,
-  FileText
+  FileText,
+  Mail
 } from 'lucide-react';
 
 export function POManagement({
@@ -56,6 +58,30 @@ export function POManagement({
   const [orderDate, setOrderDate] = useState('');
   const [receivedQty, setReceivedQty] = useState(0);
   const [editNote, setEditNote] = useState('');
+
+  // State cho modal soạn email đặt hàng theo Mục C
+  const [emailModalPO, setEmailModalPO] = useState(null);
+
+  // Xử lý xác nhận gửi email đặt hàng
+  const handleConfirmOrderEmailSent = async ({ poId, poNumber, supplierCode, supplierName, recipientEmail }) => {
+    const targetPO = pos.find(p => p.id === poId) || activePO;
+    const newLog = {
+      time: new Date().toLocaleString('vi-VN'),
+      text: `Đã gửi Email đặt hàng cho NCC ${supplierName} (${recipientEmail}) kèm đơn PO_NAMABANK_${poNumber}_${supplierCode}.xlsx`
+    };
+
+    await onUpdateOrderInfo(poId, {
+      status: 'Đã đặt hàng',
+      orderSupplier: supplierName,
+      orderSupplierCode: supplierCode,
+      recipientEmail,
+      orderDate: todayYMD(),
+      logs: [
+        ...(targetPO?.logs || []),
+        newLog
+      ]
+    });
+  };
 
   // Đồng bộ form khi activePO thay đổi
   const handleOpenModal = (po) => {
@@ -160,6 +186,15 @@ export function POManagement({
                           >
                             Xử lý / Chi tiết
                             <ExternalLink size={14} style={{ marginLeft: 4 }} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            onClick={() => setEmailModalPO(po)}
+                            title="Tạo Email Đặt Hàng Nhà Cung Cấp"
+                            style={{ color: '#003366', background: '#eff6ff', borderColor: '#bfdbfe' }}
+                          >
+                            <Mail size={15} />
                           </button>
                           <button
                             type="button"
@@ -399,6 +434,16 @@ export function POManagement({
 
                 <button
                   type="button"
+                  className="btn-workflow btn-accent"
+                  onClick={() => setEmailModalPO(activePO)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#003366', color: '#ffffff' }}
+                >
+                  <Mail size={16} />
+                  Tạo Email Đặt Hàng NCC
+                </button>
+
+                <button
+                  type="button"
                   className="btn-secondary"
                   onClick={() => onExportPO(activePO.id)}
                   disabled={isExporting}
@@ -425,6 +470,14 @@ export function POManagement({
           </div>
         </div>
       )}
+
+      {/* Modal Soạn & Gửi Email Đặt hàng theo PO và Nhà Cung Cấp */}
+      <OrderEmailModal
+        isOpen={Boolean(emailModalPO)}
+        onClose={() => setEmailModalPO(null)}
+        po={emailModalPO}
+        onConfirmSent={handleConfirmOrderEmailSent}
+      />
     </div>
   );
 }
