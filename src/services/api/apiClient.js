@@ -3,7 +3,7 @@
  * Tự động gắn Bearer Token và xử lý lỗi / mất kết nối
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiClient {
   constructor() {
@@ -69,7 +69,7 @@ class ApiClient {
     } catch (err) {
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         console.error('[API Client] Không thể kết nối đến máy chủ Backend tại:', url);
-        const netErr = new Error('Không thể kết nối đến máy chủ Backend API (http://localhost:5000). Vui lòng kiểm tra lại dịch vụ backend.');
+        const netErr = new Error('Không thể kết nối đến máy chủ Backend API. Vui lòng kiểm tra lại dịch vụ backend.');
         netErr.isNetworkError = true;
         throw netErr;
       }

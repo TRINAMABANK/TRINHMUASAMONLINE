@@ -26,7 +26,16 @@ const app = express();
 // Middlewares an toàn và hỗ trợ CORS
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5173'],
+  origin: (origin, callback) => {
+    // Cho phép tất cả các domain nội bộ, localhost và tên miền quanlyts.com
+    if (!origin || 
+        origin.includes('localhost') || 
+        origin.includes('127.0.0.1') || 
+        origin.includes('quanlyts.com')) {
+      return callback(null, true);
+    }
+    return callback(null, true); // hoặc cho phép toàn bộ trong môi trường hiện tại
+  },
   credentials: true
 }));
 app.use(morgan('dev'));
