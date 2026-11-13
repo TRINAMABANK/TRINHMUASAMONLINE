@@ -76,29 +76,140 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
   const totalClassifiedAmount = amountHO + amountDV;
   const grandTotalAmount = rows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
-  // Xử lý ACCEPT phân loại bù trừ:
-  // Phần nào tick chọn Hội sở thanh toán thì phần còn lại là Đơn vị thanh toán và ngược lại
-  const handleAcceptClassification = (chosenTypeForSelected) => {
-    const otherType = chosenTypeForSelected === 'HOI_SO' ? 'DON_VI' : 'HOI_SO';
+  // Xử lý ACCEPT – XÁC NHẬN PHÂN LOẠI & XUẤT PHIẾU:
+  // 1. Phân loại bù trừ: dòng được tick thuộc nhóm đã chọn, dòng không tick thuộc nhóm còn lại
+  // 2. Kiểm tra dữ liệu phân nhóm chặt chẽ (hợp lệ, số dòng, tổng tiền, không thiếu không trùng)
+  // 3. Nếu chưa hợp lệ: thông báo lỗi và không xuất phiếu
+  // 4. Nếu hợp lệ: lưu kết quả phân nhóm vào PO, xuất phiếu theo quy trình hiện hữu (Excel 01 file 02 sheet)
+  // 5. Thông báo hoàn tất và lưu lịch sử thao tác
+  const handleAcceptClassification = async (chosenTypeForSelected) => {
+    if (isExporting) return false;
 
-    setRows(prevRows => {
-      return prevRows.map(row => {
-        if (row.selected === true) {
-          return {
-            ...row,
-            payGroup: chosenTypeForSelected,
-            selected: false
-          };
-        } else {
-          return {
-            ...row,
-            payGroup: otherType,
-            selected: false
-          };
-        }
-      });
+    // 1. Kiểm tra điều kiện đầu vào
+    const checkedRows = rows.filter(r => r.selected === true);
+    if (checkedRows.length === 0) {
+      alert('Vui lòng tick chọn ít nhất một dòng hàng hóa trước khi nhấn ACCEPT – XÁC NHẬN PHÂN LOẠI.');
+      return false;
+    }
+
+    if (!chosenTypeForSelected) {
+      alert('Vui lòng chọn loại thanh toán (Hội sở thanh toán hoặc Đơn vị thanh toán) trước khi nhấn ACCEPT.');
+      return false;
+    }
+
+    const otherType = chosenTypeForSelected === 'HOI_SO' ? 'DON_VI' : 'HOI_SO';
+    const targetLabel = chosenTypeForSelected === 'HOI_SO' ? 'Hội sở thanh toán' : 'Đơn vị thanh toán';
+    const otherLabel = otherType === 'HOI_SO' ? 'Hội sở thanh toán' : 'Đơn vị thanh toán';
+
+    // 2. Thực hiện tự phân loại bù trừ trên toàn bộ dòng hàng hóa
+    const classifiedRows = rows.map(row => {
+      const isSelected = row.selected === true;
+      return {
+        ...row,
+        payGroup: isSelected ? chosenTypeForSelected : otherType,
+        selected: true // Đưa vào hồ sơ xuất
+      };
     });
-    return true;
+
+    // 3. KIỂM TRA DỮ LIỆU PHÂN NHÓM CHẶT CHẼ (VALIDATION)
+    // 3.1. Kiểm tra số lượng dòng
+    if (classifiedRows.length !== rows.length || rows.length === 0) {
+      alert('LỖI DỮ LIỆU: Danh sách hàng hóa rỗng hoặc số dòng không khớp. Không thể xuất phiếu.');
+      return false;
+    }
+
+    // 3.2. Kiểm tra tính hợp lệ của từng dòng hàng hóa
+    const criticalErrors = [];
+    classifiedRows.forEach((r, idx) => {
+      const stt = r.stt || (idx + 1);
+      if (!r.item || String(r.item).trim() === '') {
+        criticalErrors.push(`• Dòng ${stt}: Tên hàng hóa không được để trống.`);
+      }
+      if (isNaN(Number(r.qty)) || Number(r.qty) <= 0) {
+        criticalErrors.push(`• Dòng ${stt}: Số lượng (${r.qty}) không hợp lệ (phải là số > 0).`);
+      }
+      if (isNaN(Number(r.price)) || Number(r.price) < 0) {
+        criticalErrors.push(`• Dòng ${stt}: Đơn giá (${r.price}) không hợp lệ (phải >= 0).`);
+      }
+      if (isNaN(Number(r.amount)) || Number(r.amount) < 0) {
+        criticalErrors.push(`• Dòng ${stt}: Thành tiền (${r.amount}) không hợp lệ.`);
+      }
+    });
+
+    if (criticalErrors.length > 0) {
+      alert(
+        `DỮ LIỆU HÀNG HÓA CHƯA HỢP LỆ (KHÔNG THỂ XUẤT PHIẾU):\n\n` +
+        criticalErrors.slice(0, 5).join('\n') +
+        (criticalErrors.length > 5 ? `\n... và ${criticalErrors.length - 5} dòng lỗi khác.` : '') +
+        `\n\nVui lòng chỉnh sửa lại dữ liệu trong bảng trước khi nhấn ACCEPT.`
+      );
+      return false;
+    }
+
+    // 3.3. Kiểm tra phân nhóm và đối chiếu số dòng, tổng tiền
+    const itemsHO = classifiedRows.filter(r => r.payGroup === 'HOI_SO' || r.payGroup === 'A');
+    const itemsDV = classifiedRows.filter(r => r.payGroup === 'DON_VI' || r.payGroup === 'B');
+    const totalAmountHO = itemsHO.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const totalAmountDV = itemsDV.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const totalClassified = totalAmountHO + totalAmountDV;
+    const grandTotal = rows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+    // Kiểm tra không thiếu hoặc trùng hàng hóa
+    if (itemsHO.length + itemsDV.length !== rows.length) {
+      alert(
+        `LỖI PHÂN LOẠI:\n\n` +
+        `Tổng số dòng hai nhóm sau phân loại (${itemsHO.length + itemsDV.length}) không khớp với tổng số dòng của bảng (${rows.length}). Phát hiện dòng bị thiếu hoặc trùng lặp.`
+      );
+      return false;
+    }
+
+    // Kiểm tra tổng tiền
+    if (Math.abs(totalClassified - grandTotal) > 0.01) {
+      alert(
+        `LỖI TỔNG TIỀN:\n\n` +
+        `Tổng tiền hai nhóm sau phân loại (${formatCurrency(totalClassified)}) không khớp với tổng tiền danh sách hàng hóa (${formatCurrency(grandTotal)}).\n` +
+        `Chênh lệch: ${formatCurrency(Math.abs(totalClassified - grandTotal))}.\n\n` +
+        `Vui lòng kiểm tra lại đơn giá và thành tiền của các mặt hàng.`
+      );
+      return false;
+    }
+
+    // 4. THỰC HIỆN LƯU VÀO PO VÀ XUẤT PHIẾU THEO ĐÚNG QUY TRÌNH HIỆN HỮU
+    try {
+      // Cập nhật trạng thái rows trên UI (bỏ chọn tick)
+      setRows(classifiedRows.map(r => ({ ...r, selected: false })));
+
+      const finalPONumber = poNumber || generateNextPO();
+      const logText = `ADMIN thực hiện ACCEPT – XÁC NHẬN PHÂN LOẠI: Đã phân loại thành công ${itemsHO.length} dòng Hội sở thanh toán (${formatCurrency(totalAmountHO)}) và ${itemsDV.length} dòng Đơn vị thanh toán (${formatCurrency(totalAmountDV)}). Tự động lưu PO và xuất phiếu trình (01 file Excel gồm 02 Sheet).`;
+
+      const createdPO = await onCreatePO({
+        poNumber: finalPONumber,
+        date: poDate,
+        requester,
+        note,
+        source: fileName || 'File Excel nhập khẩu',
+        selectedRows: classifiedRows,
+        customLog: logText
+      });
+
+      // 5. THÔNG BÁO HOÀN TẤT VÀ LƯU LỊCH SỬ THAO TÁC
+      alert(
+        `ĐÃ XÁC NHẬN PHÂN LOẠI & XUẤT PHIẾU THÀNH CÔNG!\n\n` +
+        `• Mã hồ sơ PO: ${createdPO?.po || finalPONumber}\n` +
+        `• Nhóm Hội sở thanh toán: ${itemsHO.length} dòng (${formatCurrency(totalAmountHO)})\n` +
+        `• Nhóm Đơn vị thanh toán: ${itemsDV.length} dòng (${formatCurrency(totalAmountDV)})\n` +
+        `• Tổng cộng toàn bộ hồ sơ: ${classifiedRows.length} dòng (${formatCurrency(totalClassified)})\n\n` +
+        `✓ Đã lưu kết quả phân nhóm vào hồ sơ PO và ghi nhận lịch sử thao tác.\n` +
+        `✓ File Excel duy nhất gồm đúng 02 Sheet (Sheet 1: PHIẾU TRÌNH, Sheet 2: BẢNG KÊ) đang được tải về trình duyệt.`
+      );
+
+      // Chuyển sang màn hình quản lý hồ sơ PO
+      onNavigate('pos');
+      return true;
+    } catch (err) {
+      alert(`Lỗi khi lưu PO và xuất phiếu: ${err.message}`);
+      return false;
+    }
   };
 
   // Hủy toàn bộ phân loại của hồ sơ
@@ -277,6 +388,7 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
             totalCount={rows.length}
             totalAmount={grandTotalAmount}
             classifiedCount={classifiedCount}
+            isExporting={isExporting}
             onAcceptClassification={handleAcceptClassification}
             onSelectAll={selectAll}
             onDeselectAll={deselectAll}

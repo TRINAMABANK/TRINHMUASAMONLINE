@@ -20,6 +20,7 @@ export function BatchActionToolbar({
   totalCount = 0,
   totalAmount = 0,
   classifiedCount = 0,
+  isExporting = false,
   onAcceptClassification,
   onSelectAll,
   onDeselectAll,
@@ -38,9 +39,12 @@ export function BatchActionToolbar({
   const otherLabel = otherType === 'HOI_SO' ? 'Hội sở thanh toán' : 'Đơn vị thanh toán';
 
   // Xử lý khi nhấn nút ACCEPT – XÁC NHẬN PHÂN LOẠI
-  const handleAcceptClick = () => {
+  // Quy trình: Phân loại bù trừ -> Kiểm tra dữ liệu -> Lưu kết quả vào PO -> Xuất phiếu ngay
+  const handleAcceptClick = async () => {
+    if (isExporting) return;
+
     if (selectedCount === 0) {
-      alert('Vui lòng tick chọn ít nhất một dòng hàng hóa trước khi nhấn ACCEPT.');
+      alert('Vui lòng tick chọn ít nhất một dòng hàng hóa trước khi nhấn ACCEPT – XÁC NHẬN PHÂN LOẠI.');
       return;
     }
 
@@ -49,29 +53,10 @@ export function BatchActionToolbar({
       return;
     }
 
-    const confirmMessage =
-      `XÁC NHẬN PHÂN LOẠI TOÀN BỘ HỒ SƠ:\n\n` +
-      `• Phần tick chọn (${selectedCount} dòng - ${formatCurrency(selectedTotalAmount)}): ${targetLabel.toUpperCase()}\n` +
-      (unselectedCount > 0
-        ? `• Phần còn lại (${unselectedCount} dòng - ${formatCurrency(unselectedTotalAmount)}): ${otherLabel.toUpperCase()}\n\n`
-        : '\n') +
-      `Bạn có chắc chắn muốn xác nhận phân loại?`;
-
-    const isConfirmed = window.confirm(confirmMessage);
-    if (!isConfirmed) {
-      return;
-    }
-
-    // Gọi callback phân loại bù trừ
-    const result = onAcceptClassification(paymentType);
-    if (result !== false) {
-      alert(
-        `ĐÃ PHÂN LOẠI THÀNH CÔNG TOÀN BỘ HỒ SƠ!\n\n` +
-        `• ${targetLabel}: ${selectedCount} dòng (${formatCurrency(selectedTotalAmount)})\n` +
-        (unselectedCount > 0
-          ? `• ${otherLabel}: ${unselectedCount} dòng (${formatCurrency(unselectedTotalAmount)})\n`
-          : '')
-      );
+    // Không yêu cầu ADMIN thực hiện thêm bước xác nhận xuất phiếu
+    // Tự động phân loại, kiểm tra dữ liệu, lưu PO và xuất phiếu ngay theo đúng quy trình hiện hữu
+    if (onAcceptClassification) {
+      await onAcceptClassification(paymentType);
     }
   };
 
@@ -136,11 +121,12 @@ export function BatchActionToolbar({
             <button
               type="button"
               className="btn-accept-main"
+              disabled={isExporting}
               onClick={handleAcceptClick}
-              title="Xác nhận phân loại bù trừ cho toàn bộ hồ sơ"
+              title="Xác nhận phân loại bù trừ và xuất phiếu trình hồ sơ ngay lập tức"
             >
               <CheckCircle2 size={18} />
-              <span>ACCEPT – XÁC NHẬN PHÂN LOẠI</span>
+              <span>{isExporting ? 'Đang phân loại & xuất phiếu...' : 'ACCEPT – XÁC NHẬN PHÂN LOẠI'}</span>
             </button>
           </div>
         </div>

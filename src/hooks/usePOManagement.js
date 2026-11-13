@@ -96,13 +96,15 @@ export function usePOManagement() {
     note,
     payGroup = 'A',
     source = '',
-    selectedRows = []
+    selectedRows = [],
+    customLog = ''
   }) => {
     if (!selectedRows || selectedRows.length === 0) {
       throw new Error('Chưa có dòng nào được chọn để tạo hồ sơ.');
     }
 
     const finalPO = poNumber || generateNextPONumber(pos);
+    const defaultLogText = customLog || `Khởi tạo hồ sơ ${finalPO} với ${selectedRows.length} dòng hàng hóa từ ${source || 'Excel'}`;
 
     // 1. Thử lưu vào Backend API trước
     let createdRecord = null;
@@ -133,6 +135,8 @@ export function usePOManagement() {
       const res = await poApi.createPO(apiPayload);
       if (res.success && res.data) {
         createdRecord = normalizeBackendPO(res.data);
+        // Lưu log lịch sử thao tác
+        storageService.addLog(createdRecord.id, defaultLogText);
       }
     } catch (err) {
       console.warn('[usePOManagement] Lưu Backend API lỗi, lưu Local fallback:', err.message);
@@ -157,7 +161,7 @@ export function usePOManagement() {
         logs: [
           {
             time: new Date().toLocaleString('vi-VN'),
-            text: `Khởi tạo hồ sơ ${finalPO} với ${selectedRows.length} dòng hàng hóa từ ${source || 'Excel'}`
+            text: defaultLogText
           }
         ]
       };
