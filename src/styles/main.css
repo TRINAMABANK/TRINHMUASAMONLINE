@@ -2384,19 +2384,23 @@ button {
   text-align: left;
 }
 
-.btn-export-final.btn-ready {
+.btn-export-final.btn-ready,
+.btn-export-final.btn-auto-action {
   background: var(--brand-primary);
   color: #ffffff;
   box-shadow: 0 4px 14px rgba(0, 86, 163, 0.3);
+  cursor: pointer;
 }
 
-.btn-export-final.btn-ready:hover {
+.btn-export-final.btn-ready:hover,
+.btn-export-final.btn-auto-action:hover {
   background: var(--brand-hover);
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(0, 86, 163, 0.4);
 }
 
-.btn-export-final.btn-ready:active {
+.btn-export-final.btn-ready:active,
+.btn-export-final.btn-auto-action:active {
   transform: translateY(0);
 }
 

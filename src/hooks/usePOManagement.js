@@ -217,6 +217,7 @@ export function usePOManagement() {
       await excelExporter.exportBothExcelFiles(createdRecord);
     } catch (e) {
       console.error('Lỗi tự động xuất 01 file Excel:', e);
+      throw new Error('Lỗi xuất file Excel: ' + (e.message || 'Không thể tạo file Excel.'));
     } finally {
       setIsExporting(false);
     }

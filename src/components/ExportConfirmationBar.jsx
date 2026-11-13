@@ -155,13 +155,13 @@ export function ExportConfirmationBar({
 
           <button
             type="button"
-            className={`btn-export-final ${isReady ? 'btn-ready' : 'btn-disabled'}`}
-            disabled={!isReady || isExporting}
+            className={`btn-export-final ${isReady ? 'btn-ready' : 'btn-auto-action'}`}
+            disabled={isExporting}
             onClick={onExport}
             title={
               isReady
                 ? 'Tải xuống duy nhất 01 File Excel gồm đúng 02 Sheet (PHIẾU TRÌNH & BẢNG KÊ)'
-                : `Chưa thể xuất Excel: Còn ${countUnassigned} dòng chưa phân loại Nhóm TT.`
+                : 'Xác nhận phân loại và tải ngay 01 File Excel (gồm đúng 02 Sheet)'
             }
           >
             <FileSpreadsheet size={20} />

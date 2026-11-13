@@ -4,8 +4,12 @@ import { NAM_A_BANK_LOGO_BASE64 } from '../assets/namabankLogoBase64.js';
 import { formatExcelDate } from '../utils/dateUtils.js';
 import { getUnitContact } from '../utils/supplierDirectory.js';
 
+// Cache template trong RAM để xuất file tức thì và không bị lỗi mạng fetch lại
+let cachedTpl1 = null;
+let cachedTpl2 = null;
+
 /**
- * Tải file mẫu dưới dạng ArrayBuffer
+ * Tải file mẫu dưới dạng ArrayBuffer (có cache trong RAM)
  * @param {string} templatePath Đường dẫn tương đối từ thư mục public (ví dụ /templates/1_BANG_TRINH_KY.xlsx)
  * @param {ArrayBuffer} [overrideBuffer] Buffer truyền sẵn (dành cho môi trường node/test)
  */
@@ -13,13 +17,24 @@ async function loadTemplateBuffer(templatePath, overrideBuffer = null) {
   if (overrideBuffer) {
     return overrideBuffer;
   }
+
+  // Sử dụng buffer đã cache trong RAM nếu có
+  if (templatePath.includes('1_BANG_TRINH_KY') && cachedTpl1) {
+    return cachedTpl1.slice(0);
+  }
+  if (templatePath.includes('2_BANG_KE') && cachedTpl2) {
+    return cachedTpl2.slice(0);
+  }
   
   if (typeof fetch !== 'undefined') {
     const res = await fetch(templatePath);
     if (!res.ok) {
       throw new Error(`Không thể tải template tại đường dẫn ${templatePath} (Mã lỗi: ${res.status})`);
     }
-    return await res.arrayBuffer();
+    const buf = await res.arrayBuffer();
+    if (templatePath.includes('1_BANG_TRINH_KY')) cachedTpl1 = buf;
+    if (templatePath.includes('2_BANG_KE')) cachedTpl2 = buf;
+    return buf.slice(0);
   }
 
   throw new Error('Môi trường không hỗ trợ fetch template. Vui lòng cung cấp overrideBuffer.');
@@ -27,6 +42,7 @@ async function loadTemplateBuffer(templatePath, overrideBuffer = null) {
 
 /**
  * Kích hoạt tải về duy nhất 01 file Excel trên trình duyệt
+ * Đảm bảo luồng download diễn ra an toàn, không bị ngắt quãng
  * @param {ArrayBuffer|Blob} buffer 
  * @param {string} filename 
  */
@@ -38,10 +54,20 @@ export function triggerFileDownload(buffer, filename) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  // Giữ URL đủ lâu (15 giây) để trình duyệt hoàn tất ghi file xuống ổ đĩa an toàn
+  setTimeout(() => {
+    try {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // Ignore
+    }
+  }, 15000);
 }
 
 /**
