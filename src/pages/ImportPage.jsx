@@ -38,6 +38,7 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
     selectedTotalAmount,
     selectedTotalQty,
     toggleRow,
+    toggleRowsBatch,
     selectAll,
     selectAllUnassigned,
     deselectAll
@@ -375,6 +376,7 @@ export function ImportPage({ onCreatePO, isExporting, generateNextPO, onNavigate
               onDeleteRow={deleteRow}
               onDuplicateRow={duplicateRow}
               onToggleSelect={toggleRow}
+              onToggleBatch={toggleRowsBatch}
               onSelectAll={selectAll}
               onDeselectAll={deselectAll}
               warnings={warnings}

@@ -968,16 +968,31 @@ button {
 
 /* Dòng được chọn có nền xanh rất nhẹ, viền rõ ràng */
 .procurement-table tbody tr.row-selected {
-  background-color: var(--brand-primary-subtle);
+  background-color: var(--brand-primary-light, #ebf3fc);
 }
 
 .procurement-table tbody tr.row-deselected {
-  opacity: 0.6;
+  opacity: 1; /* Giữ hiển thị rõ nét, không làm mờ gây hiểu lầm bị disable */
+  background-color: var(--surface);
 }
 
+.th-checkbox,
 .cell-checkbox {
   text-align: center;
-  width: 40px;
+  width: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.table-checkbox {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--brand-primary, #0056A3);
+  vertical-align: middle;
+  margin: 0;
+  border-radius: 4px;
 }
 
 .cell-stt {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { EditableCell } from './EditableCell.jsx';
 import { normalizeText } from '../utils/validation.js';
 import { formatCurrency } from '../utils/currencyUtils.js';
@@ -21,6 +21,7 @@ export function DataTable({
   onDeleteRow,
   onDuplicateRow,
   onToggleSelect,
+  onToggleBatch,
   onSelectAll,
   onDeselectAll,
   warnings = []
@@ -117,7 +118,30 @@ export function DataTable({
     }
   };
 
+  const headerCheckboxRef = useRef(null);
+
+  // Trạng thái chọn dòng ở trang hiện tại
   const isAllPageSelected = paginatedRows.length > 0 && paginatedRows.every(r => r.selected === true);
+  const isSomePageSelected = paginatedRows.length > 0 && paginatedRows.some(r => r.selected === true);
+
+  // Hiển thị trạng thái gạch ngang (indeterminate) khi chỉ chọn 1 phần trang
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = isSomePageSelected && !isAllPageSelected;
+    }
+  }, [isSomePageSelected, isAllPageSelected]);
+
+  // Xử lý chọn / bỏ chọn toàn bộ trang
+  const handleTogglePageCheckbox = (checked) => {
+    const pageRowIds = paginatedRows.map(r => r.id);
+    if (onToggleBatch) {
+      onToggleBatch(pageRowIds, checked);
+    } else if (checked && onSelectAll) {
+      onSelectAll();
+    } else if (!checked && onDeselectAll) {
+      onDeselectAll();
+    }
+  };
 
   return (
     <div className="datatable-container">
@@ -191,18 +215,21 @@ export function DataTable({
         <table className="procurement-table">
           <thead>
             <tr>
-              <th className="th-checkbox">
+              <th
+                className="th-checkbox"
+                onClick={(e) => {
+                  if (e.target.tagName !== 'INPUT') {
+                    handleTogglePageCheckbox(!isAllPageSelected);
+                  }
+                }}
+                title={isAllPageSelected ? "Bỏ chọn tất cả dòng ở trang này" : "Chọn tất cả dòng ở trang này"}
+              >
                 <input
+                  ref={headerCheckboxRef}
                   type="checkbox"
+                  className="table-checkbox"
                   checked={isAllPageSelected}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      paginatedRows.forEach(r => onToggleSelect(r.id, true));
-                    } else {
-                      paginatedRows.forEach(r => onToggleSelect(r.id, false));
-                    }
-                  }}
-                  title="Chọn tất cả dòng ở trang này"
+                  onChange={(e) => handleTogglePageCheckbox(e.target.checked)}
                 />
               </th>
               <th className="th-stt" onClick={() => handleSort('stt')}>
@@ -246,9 +273,18 @@ export function DataTable({
                 const isSelected = row.selected === true;
                 return (
                   <tr key={row.id} className={isSelected ? 'row-selected' : 'row-deselected'}>
-                    <td className="cell-checkbox">
+                    <td
+                      className="cell-checkbox"
+                      onClick={(e) => {
+                        if (e.target.tagName !== 'INPUT') {
+                          onToggleSelect(row.id, !isSelected);
+                        }
+                      }}
+                      title={isSelected ? 'Bỏ chọn dòng này' : 'Chọn dòng này'}
+                    >
                       <input
                         type="checkbox"
+                        className="table-checkbox"
                         checked={isSelected}
                         onChange={(e) => onToggleSelect(row.id, e.target.checked)}
                       />
