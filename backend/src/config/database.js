@@ -575,6 +575,41 @@ async function createSchemaTables(db) {
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_delivery_date TIMESTAMP WITH TIME ZONE;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE;
 
+    -- Cho phép Master PO có nhiều NCC (supplier_id / supplier_name có thể null hoặc đại diện)
+    ALTER TABLE purchase_orders ALTER COLUMN supplier_id DROP NOT NULL;
+    ALTER TABLE purchase_orders ALTER COLUMN supplier_name DROP NOT NULL;
+
+    -- Cho phép linh hoạt các trường tương thích của lifecycle_events
+    ALTER TABLE lifecycle_events ALTER COLUMN entity_type DROP NOT NULL;
+    ALTER TABLE lifecycle_events ALTER COLUMN entity_id DROP NOT NULL;
+    ALTER TABLE lifecycle_events ALTER COLUMN event_type DROP NOT NULL;
+
+    -- Cho phép biên bản nhận hàng toàn PO không bắt buộc department_id
+    ALTER TABLE receipt_confirmations ALTER COLUMN department_id DROP NOT NULL;
+
+    -- Các cột quản lý thời gian trình ký và vòng đời PO chuẩn Section III
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approval_started_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS ordered_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS current_round INTEGER DEFAULT 1;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS representative_unit TEXT;
+
+    -- Bổ sung cho bảng approval_histories
+    ALTER TABLE approval_histories ADD COLUMN IF NOT EXISTS round INTEGER DEFAULT 1;
+    ALTER TABLE approval_histories ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE approval_histories ADD COLUMN IF NOT EXISTS decided_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE approval_histories ADD COLUMN IF NOT EXISTS duration_hours NUMERIC(10, 2);
+
+    -- Bổ sung cho bảng purchase_order_items
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS expected_delivery_date TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'CHUA_GIAO';
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS delivered_qty INTEGER DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS received_qty INTEGER DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS receipt_status TEXT DEFAULT 'CHUA_NHAN';
+
     ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
     ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS delivered_quantity INTEGER DEFAULT 0;
     ALTER TABLE purchase_order_deliveries ADD COLUMN IF NOT EXISTS delivery_note TEXT;

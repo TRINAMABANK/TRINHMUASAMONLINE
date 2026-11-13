@@ -2,17 +2,26 @@ import {
   getPurchaseOrdersList,
   getPurchaseOrderDetail,
   createPurchaseOrderRecord,
-  acceptClassificationBatch
+  acceptClassificationBatch,
+  submitPOForApproval,
+  approvePO,
+  rejectPO,
+  orderPO,
+  recordDelivery,
+  recordReceipt
 } from '../services/poService.js';
 import { query } from '../config/database.js';
 
 export async function getPurchaseOrders(req, res, next) {
   try {
     const filters = {
+      q: req.query.q,
       po_number: req.query.po_number,
+      requester: req.query.requester,
       item_name: req.query.item_name,
       unit_name: req.query.unit_name,
       supplier_name: req.query.supplier_name,
+      status: req.query.status,
       submission_status: req.query.submission_status,
       po_status: req.query.po_status,
       delivery_status: req.query.delivery_status,
@@ -96,6 +105,92 @@ export async function deletePurchaseOrder(req, res, next) {
 
     await query('DELETE FROM purchase_orders WHERE id = $1', [po.id]);
     res.json({ success: true, message: `Đã xóa thành công hồ sơ PO: ${po.po_number}` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function submitApprovalHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const updated = await submitPOForApproval(id, req.user);
+    res.json({
+      success: true,
+      message: `Đã gửi trình ký hồ sơ ${updated.po_number} thành công.`,
+      data: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function approvePoHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const updated = await approvePO(id, comment, req.user);
+    res.json({
+      success: true,
+      message: `Đã phê duyệt hồ sơ ${updated.po_number} thành công.`,
+      data: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function rejectPoHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const updated = await rejectPO(id, reason, req.user);
+    res.json({
+      success: true,
+      message: `Đã từ chối/trả lại hồ sơ ${updated.po_number}.`,
+      data: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function orderPoHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const updated = await orderPO(id, req.body, req.user);
+    res.json({
+      success: true,
+      message: `Đã phát hành đơn đặt hàng cho hồ sơ ${updated.po_number}.`,
+      data: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deliverPoHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const updated = await recordDelivery(id, req.body, req.user);
+    res.json({
+      success: true,
+      message: `Đã ghi nhận đợt giao hàng cho hồ sơ ${updated.po_number}.`,
+      data: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function receiptPoHandler(req, res, next) {
+  try {
+    const { id } = req.params;
+    const updated = await recordReceipt(id, req.body, req.user);
+    res.json({
+      success: true,
+      message: `Đã xác nhận nhận hàng thành công.`,
+      data: updated
+    });
   } catch (err) {
     next(err);
   }
