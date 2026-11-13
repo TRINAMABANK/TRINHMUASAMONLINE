@@ -120,26 +120,38 @@ export function DataTable({
 
   const headerCheckboxRef = useRef(null);
 
-  // Trạng thái chọn dòng ở trang hiện tại
-  const isAllPageSelected = paginatedRows.length > 0 && paginatedRows.every(r => r.selected === true);
-  const isSomePageSelected = paginatedRows.length > 0 && paginatedRows.some(r => r.selected === true);
+  // Danh sách dòng mục tiêu: nếu đang lọc thì áp dụng cho filteredRows, bình thường là toàn bộ rows
+  const activeRows = filteredRows.length > 0 ? filteredRows : rows;
+  const isAllActiveSelected = activeRows.length > 0 && activeRows.every(r => r.selected === true);
+  const isSomeActiveSelected = activeRows.length > 0 && activeRows.some(r => r.selected === true);
 
-  // Hiển thị trạng thái gạch ngang (indeterminate) khi chỉ chọn 1 phần trang
+  // Hiển thị trạng thái gạch ngang (indeterminate) khi chỉ chọn 1 phần
   useEffect(() => {
     if (headerCheckboxRef.current) {
-      headerCheckboxRef.current.indeterminate = isSomePageSelected && !isAllPageSelected;
+      headerCheckboxRef.current.indeterminate = isSomeActiveSelected && !isAllActiveSelected;
     }
-  }, [isSomePageSelected, isAllPageSelected]);
+  }, [isSomeActiveSelected, isAllActiveSelected]);
 
-  // Xử lý chọn / bỏ chọn toàn bộ trang
-  const handleTogglePageCheckbox = (checked) => {
-    const pageRowIds = paginatedRows.map(r => r.id);
-    if (onToggleBatch) {
-      onToggleBatch(pageRowIds, checked);
-    } else if (checked && onSelectAll) {
-      onSelectAll();
-    } else if (!checked && onDeselectAll) {
-      onDeselectAll();
+  // Xử lý chọn / bỏ chọn HẾT HẾT toàn bộ các dòng hàng hóa bên dưới
+  const handleToggleAllRows = (checked) => {
+    if (checked) {
+      // Khi tick ô tiêu đề: BẮT BUỘC CHỌN ĐƯỢC HẾT HẾT TẤT CẢ CÁC DÒNG BÊN DƯỚI
+      if (filteredRows.length > 0 && filteredRows.length < rows.length && onToggleBatch) {
+        onToggleBatch(filteredRows.map(r => r.id), true);
+      } else if (onSelectAll) {
+        onSelectAll();
+      } else if (onToggleBatch) {
+        onToggleBatch(rows.map(r => r.id), true);
+      }
+    } else {
+      // Bỏ chọn tất cả các dòng
+      if (filteredRows.length > 0 && filteredRows.length < rows.length && onToggleBatch) {
+        onToggleBatch(filteredRows.map(r => r.id), false);
+      } else if (onDeselectAll) {
+        onDeselectAll();
+      } else if (onToggleBatch) {
+        onToggleBatch(rows.map(r => r.id), false);
+      }
     }
   };
 
@@ -219,17 +231,17 @@ export function DataTable({
                 className="th-checkbox"
                 onClick={(e) => {
                   if (e.target.tagName !== 'INPUT') {
-                    handleTogglePageCheckbox(!isAllPageSelected);
+                    handleToggleAllRows(!isAllActiveSelected);
                   }
                 }}
-                title={isAllPageSelected ? "Bỏ chọn tất cả dòng ở trang này" : "Chọn tất cả dòng ở trang này"}
+                title={isAllActiveSelected ? "Bỏ chọn tất cả dòng hàng hóa" : "Chọn hết tất cả các dòng hàng hóa bên dưới"}
               >
                 <input
                   ref={headerCheckboxRef}
                   type="checkbox"
                   className="table-checkbox"
-                  checked={isAllPageSelected}
-                  onChange={(e) => handleTogglePageCheckbox(e.target.checked)}
+                  checked={isAllActiveSelected}
+                  onChange={(e) => handleToggleAllRows(e.target.checked)}
                 />
               </th>
               <th className="th-stt" onClick={() => handleSort('stt')}>
